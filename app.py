@@ -164,7 +164,6 @@ def generate_chemical_label_custom(
 ):
     """Genera la imagen PNG de la etiqueta ajustada dinámicamente según el contenido."""
     WIDTH = 1000
-    PADDING = 12
     LINE_THICKNESS = 2
     
     temp_img = Image.new("RGB", (WIDTH, 2000), "white")
