@@ -1,164 +1,434 @@
-import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
 import os
 import textwrap
+from io import BytesIO
+import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
 
-# --- CONFIGURACIÓN DE RUTAS ---
-BASE_DIR = "assets"
-SGA_DIR = os.path.join(BASE_DIR, "sga")
-EPP_DIR = os.path.join(BASE_DIR, "epp")
-UN_DIR = os.path.join(BASE_DIR, "un")
-LOGO_PATH = os.path.join(BASE_DIR, "logo_colmena.png")
+# ==============================================================================
+# CONFIGURACIÓN DE LA PÁGINA DE STREAMLIT
+# ==============================================================================
+st.set_page_config(
+    page_title="Generador de Etiquetas de Seguridad - Colmena Seguros",
+    page_icon="🧪",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- FUNCIONES DE APOYO ---
-def get_font(size, bold=False):
-    """Carga una fuente. Intenta buscar una negrita si se solicita."""
-    try:
-        # En Streamlit Cloud (Linux), estas son rutas comunes de fuentes
-        if bold:
-            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-    except:
-        return ImageFont.load_default()
+# ==============================================================================
+# RUTAS DE ASSETS
+# ==============================================================================
+ASSETS_DIR = "assets"
+LOGO_PATH = os.path.join(ASSETS_DIR, "logo_colmena.png")
+SGA_DIR = os.path.join(ASSETS_DIR, "sga")
+EPP_DIR = os.path.join(ASSETS_DIR, "epp")
+UN_DIR = os.path.join(ASSETS_DIR, "un")
 
-def draw_wrapped_text(draw, text, x, y, max_width, font, fill="black"):
-    """Dibuja texto con ajuste de línea automático."""
-    # Estimar caracteres por línea según el ancho
-    avg_char_width = font.getlength('x')
-    chars_per_line = int(max_width / avg_char_width)
-    lines = textwrap.wrap(text, width=chars_per_line)
+# Helper para listar archivos de imagen en un directorio
+def list_image_files(directory):
+    if not os.path.exists(directory):
+        return []
+    valid_exts = ('.png', '.jpg', '.jpeg', '.webp')
+    return sorted([f for f in os.listdir(directory) if f.lower().endswith(valid_exts)])
+
+sga_files = list_image_files(SGA_DIR)
+epp_files = list_image_files(EPP_DIR)
+un_files = list_image_files(UN_DIR)
+
+# ==============================================================================
+# BARRA LATERAL (SIDEBAR): ENTRADAS DEL USUARIO
+# ==============================================================================
+st.sidebar.title("🛠️ Configuración de Etiqueta")
+st.sidebar.markdown("Basado en la estructura de **Colmena Seguros (Modelo VARSOL)**")
+
+# 1. Nombre del Producto
+product_name = st.sidebar.text_input(
+    "1. Nombre del Producto / Reactivo",
+    value="VARSOL",
+    help="Ej: VARSOL, ACETONA, ÁCIDO SULFÚRICO"
+)
+
+# 2. Composición
+composition_text = st.sidebar.text_area(
+    "2. Composición Química",
+    value="Mezcla compleja de hidrocarburos entre C9 y C12,\nparafinas: 79% CAS: 8052-41-3",
+    height=80
+)
+
+# 3. Palabra de Advertencia
+signal_word = st.sidebar.selectbox(
+    "3. Palabra de Advertencia",
+    options=["Atención", "Peligro"],
+    index=0
+)
+
+# 4. Pictogramas SGA
+selected_sga = st.sidebar.multiselect(
+    "4. Pictogramas SGA / GHS",
+    options=sga_files,
+    default=[f for f in ["GHS02.png", "GHS07.png"] if f in sga_files] if sga_files else []
+)
+
+# 5. Frases H
+h_phrases_text = st.sidebar.text_area(
+    "5. Indicaciones de Peligro (Frases H)",
+    value="H226 Líquidos y vapores inflamables\nH302 Nocivo en caso de ingestión\nH312 Nocivo en contacto con la piel\nH332 Nocivo si se inhala\nH413 Puede ser nocivo para los organismos acuáticos",
+    height=120
+)
+
+# 6. Frases P
+p_phrases_text = st.sidebar.text_area(
+    "6. Consejos de Prudencia (Frases P)",
+    value="P102 Mantener fuera del alcance de los niños\nP210 Mantener alejado del calor, chispas, llamas al descubierto\nP262 Evitar el contacto con los ojos, la piel o la ropa\nP403 Almacenar en un lugar bien ventilado\nP301+P330+P331 EN CASO DE INGESTIÓN: Enjuagarse la boca. NO provocar el vómito",
+    height=140
+)
+
+# 7. Transporte UN
+col_un1, col_un2 = st.sidebar.columns([2, 1])
+with col_un1:
+    selected_un_file = st.selectbox(
+        "7a. Clase Transporte UN",
+        options=un_files,
+        index=un_files.index("CLASE_3.png") if "CLASE_3.png" in un_files else 0 if un_files else None
+    )
+with col_un2:
+    un_code = st.text_input("7b. Código UN", value="1268")
+
+# 8. Pictogramas EPP
+selected_epp = st.sidebar.multiselect(
+    "8. Pictogramas EPP Recomendados",
+    options=epp_files,
+    default=epp_files if epp_files else []
+)
+
+# 9. Información del Proveedor
+provider_text = st.sidebar.text_area(
+    "9. Información del Proveedor",
+    value="CONSTELACIÓN INDUSTRIAL DEL ASEO S.A.S\n59 No. 5A - 77/85 Bogotá, Colombia\nPBX: (1) 4069777 - 3132526836",
+    height=100
+)
+
+# ==============================================================================
+# LÓGICA DE DIBUJO Y CÁLCULO DINÁMICO DE ALTURA CON PIL (PILLOW)
+# ==============================================================================
+
+def load_font(size, is_bold=False):
+    """Carga una fuente Truetype del sistema o fuente por defecto de Pillow."""
+    font_names = [
+        "DejaVuSans-Bold.ttf" if is_bold else "DejaVuSans.ttf",
+        "arialbd.ttf" if is_bold else "arial.ttf",
+        "LiberationSans-Bold.ttf" if is_bold else "LiberationSans-Regular.ttf",
+    ]
+    for name in font_names:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+def wrap_and_measure_text(draw, text, font, max_width):
+    """Ajusta líneas de texto al ancho máximo dado y calcula la altura requerida."""
+    lines = []
+    for raw_line in text.split('\n'):
+        if not raw_line.strip():
+            lines.append("")
+            continue
+        wrapped = textwrap.wrap(raw_line, width=max(15, int(max_width / (font.size * 0.55))))
+        lines.extend(wrapped)
     
-    current_y = y
+    total_height = 0
+    line_heights = []
     for line in lines:
-        draw.text((x, current_y), line, font=font, fill=fill)
-        current_y += font.size + 5
-    return current_y
+        if line:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            h = bbox[3] - bbox[1] + 4
+        else:
+            h = font.size + 4
+        line_heights.append(h)
+        total_height += h
+        
+    return lines, total_height, line_heights
 
-# --- INTERFAZ STREAMLIT ---
-st.set_page_config(page_title="Generador de Etiquetas Pro", layout="wide")
-st.title("🛡️ Generador de Etiquetas de Seguridad Química")
-
-with st.sidebar:
-    st.header("1. Información del Producto")
-    nombre = st.text_input("Nombre del Producto", "VARSOL").upper()
-    comp = st.text_area("Composición", "Mezcla compleja de hidrocarburos...")
-    palabra = st.selectbox("Palabra de Advertencia", ["ATENCIÓN", "PELIGRO"])
+def generate_chemical_label():
+    """Genera la imagen PNG de la etiqueta ajustada dinámicamente según el contenido."""
+    WIDTH = 1000
+    PADDING = 12
+    LINE_THICKNESS = 2
     
-    st.header("2. Peligros y Prudencia")
-    frases_h = st.text_area("Indicaciones de Peligro (Frases H)", "H226 Líquidos y vapores inflamables...")
-    frases_p = st.text_area("Consejos de Prudencia (Frases P)", "P102 Mantener fuera del alcance de los niños...")
+    # Crear canvas temporal para mediciones
+    temp_img = Image.new("RGB", (WIDTH, 2000), "white")
+    draw = ImageDraw.Draw(temp_img)
     
-    st.header("3. Pictogramas")
-    sga_sel = st.multiselect("Pictogramas SGA (GHS)", os.listdir(SGA_DIR) if os.path.exists(SGA_DIR) else [])
-    un_sel = st.multiselect("Pictogramas UN (Transporte)", os.listdir(UN_DIR) if os.path.exists(UN_DIR) else [])
-    un_id = st.text_input("Identificación UN (Número)", "1268")
+    # Fuentes con jerarquía visual proporcional
+    font_header_title = load_font(18, is_bold=True)
+    font_prod_name = load_font(32, is_bold=True)
+    font_signal = load_font(22, is_bold=True)
+    font_body = load_font(15, is_bold=False)
+    font_body_bold = load_font(15, is_bold=True)
+    font_small = load_font(13, is_bold=False)
+    font_provider = load_font(14, is_bold=False)
     
-    epp_sel = st.multiselect("EPP Recomendados", os.listdir(EPP_DIR) if os.path.exists(EPP_DIR) else [])
+    # Anchos de columnas
+    col_left_w = 260
+    col_right_w = WIDTH - col_left_w  # 740px
     
-    st.header("4. Proveedor")
-    prov = st.text_area("Datos del Proveedor", "CONSTELACIÓN INDUSTRIAL S.A.S\nBogotá, Colombia")
-
-# --- GENERACIÓN DE IMAGEN ---
-if st.button("GENERAR ETIQUETA PROFESIONAL"):
-    # 1. Definir fuentes
-    font_product = get_font(80, bold=True)
-    font_title = get_font(30, bold=True)
-    font_body = get_font(24)
-    font_small = get_font(18)
-
-    # 2. Lienzo (Ancho fijo 1500px, alto dinámico)
-    # Calculamos una altura base amplia, luego podrías recortarla
-    w, h = 1500, 1600
-    img = Image.new('RGB', (w, h), 'white')
+    # --- CÁLCULO DE ALTURAS DINÁMICAS ---
+    # Fila 1: Encabezado (Logo | Nombre | Composición)
+    comp_lines, comp_h, _ = wrap_and_measure_text(draw, composition_text, font_small, col_left_w - 20)
+    row1_h = max(110, comp_h + 40)
+    
+    # Fila 2: Palabra de advertencia
+    row2_h = 50
+    
+    # Secciones Frases H y Frases P (Columna Derecha)
+    h_lines, h_text_h, _ = wrap_and_measure_text(draw, h_phrases_text, font_body, col_right_w - 40)
+    p_lines, p_text_h, _ = wrap_and_measure_text(draw, p_phrases_text, font_body, col_right_w - 40)
+    
+    h_box_h = max(80, h_text_h + 40)
+    p_box_h = max(100, p_text_h + 40)
+    right_col_total_h = h_box_h + p_box_h
+    
+    # Seccion Pictogramas SGA (Columna Izquierda)
+    sga_count = len(selected_sga)
+    sga_min_h = 180 if sga_count <= 2 else 240 if sga_count <= 4 else 300
+    
+    # Fila 3 y 4 Unificada (Sección Central)
+    middle_section_h = max(sga_min_h, right_col_total_h)
+    
+    # Fila 5: UN | EPP | Proveedor
+    provider_lines, prov_h, _ = wrap_and_measure_text(draw, provider_text, font_provider, 300)
+    row5_h = max(140, prov_h + 45)
+    
+    # Altura Total Dinámica
+    TOTAL_HEIGHT = row1_h + row2_h + middle_section_h + row5_h
+    
+    # Inicialización de la imagen final
+    img = Image.new("RGBA", (WIDTH, TOTAL_HEIGHT), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img)
     
-    # 3. Dibujar Estructura (Líneas gruesas)
-    draw.rectangle([20, 20, w-20, h-20], outline="black", width=6)
+    # DIBUJAR BORDES EXTERIORES
+    draw.rectangle([0, 0, WIDTH - 1, TOTAL_HEIGHT - 1], outline="black", width=LINE_THICKNESS * 2)
     
-    # --- FILA 1: LOGO | NOMBRE | COMPOSICIÓN ---
-    draw.line([(20, 250), (w-20, 250)], fill="black", width=4) # Línea horizontal
-    draw.line([(350, 20), (350, 250)], fill="black", width=4)  # Divisor logo
-    draw.line([(1050, 20), (1050, 250)], fill="black", width=4) # Divisor comp
+    # ==========================================================================
+    # FILA 1: Encabezado (Logo Colmena | Nombre Producto | Composición)
+    # ==========================================================================
+    y_curr = 0
+    # Línea horizontal inferior Fila 1
+    draw.line([(0, y_curr + row1_h), (WIDTH, y_curr + row1_h)], fill="black", width=LINE_THICKNESS)
+    # Divisores verticales
+    draw.line([(col_left_w, y_curr), (col_left_w, y_curr + row1_h)], fill="black", width=LINE_THICKNESS)
+    draw.line([(WIDTH - col_left_w, y_curr), (WIDTH - col_left_w, y_curr + row1_h)], fill="black", width=LINE_THICKNESS)
     
-    # Logo
+    # Columna 1 (Logo Colmena)
     if os.path.exists(LOGO_PATH):
-        logo = Image.open(LOGO_PATH).convert("RGBA")
-        logo.thumbnail((300, 200))
-        img.paste(logo, (40, 40), logo)
-    
-    # Nombre Producto
-    draw.text((380, 80), nombre, font=font_product, fill="black")
-    
-    # Composición
-    draw.text((1065, 35), "Composición:", font=get_font(22, True), fill="black")
-    draw_wrapped_text(draw, comp, 1065, 75, 400, font_small)
-
-    # --- FILA 2: PALABRA DE ADVERTENCIA ---
-    draw.line([(20, 330), (w-20, 330)], fill="black", width=4)
-    draw.line([(450, 250), (450, 330)], fill="black", width=4)
-    
-    draw.text((40, 270), "Palabra de Advertencia", font=font_title, fill="black")
-    color_adv = "red" if "PELIGRO" in palabra else "black"
-    draw.text((750, 265), palabra, font=get_font(50, True), fill=color_adv)
-
-    # --- CUERPO CENTRAL: PICTOGRAMAS (IZQ) | FRASES H (DER) ---
-    draw.line([(20, 1000), (w-20, 1000)], fill="black", width=4) # Cierre sección media
-    draw.line([(450, 330), (450, 1000)], fill="black", width=4) # Divisor vertical
-    
-    # Títulos Secciones
-    draw.text((40, 345), "Pictogramas SGA / UN", font=font_title, fill="black")
-    draw.text((470, 345), "Indicaciones de peligro (Frases H)", font=font_title, fill="black")
-    
-    # Pegar Pictogramas SGA (Grandes)
-    y_pics = 420
-    x_pics = 50
-    for i, p in enumerate(sga_sel):
-        p_img = Image.open(os.path.join(SGA_DIR, p)).convert("RGBA")
-        p_img = p_img.resize((220, 220)) # Tamaño aumentado
-        img.paste(p_img, (x_pics, y_pics), p_img)
-        x_pics += 190
-        if x_pics > 300: # Salto de línea si hay más de 2
-            x_pics = 50
-            y_pics += 200
-
-    # Pegar Pictogramas UN (Abajo de los SGA)
-    y_un = y_pics + 220
-    draw.text((40, y_un), "Transporte UN:", font=get_font(24, True), fill="black")
-    y_un += 40
-    x_un = 60
-    for p in un_sel:
-        p_img = Image.open(os.path.join(UN_DIR, p)).convert("RGBA")
-        p_img = p_img.resize((160, 160))
-        img.paste(p_img, (x_un, y_un), p_img)
-        x_un += 180
-    
-    draw.text((60, y_un + 180), f"ID UN: {un_id}", font=font_title, fill="black")
-
-    # Frases H (Derecha)
-    draw_wrapped_text(draw, frases_h, 470, 420, 1000, font_body)
-
-    # --- SECCIÓN FRASES P (ANCHO TOTAL) ---
-    draw.line([(20, 1300), (w-20, 1300)], fill="black", width=4)
-    draw.text((40, 1020), "Consejos de prudencia (Frases P)", font=font_title, fill="black")
-    draw_wrapped_text(draw, frases_p, 40, 1080, 1400, font_body)
-
-    # --- FILA FINAL: EPP | PROVEEDOR ---
-    draw.line([(850, 1300), (850, 1580)], fill="black", width=4)
-    draw.text((40, 1320), "EPP (Protección Personal a usar):", font=font_title, fill="black")
-    
-    x_epp = 40
-    for p in epp_sel:
-        p_img = Image.open(os.path.join(EPP_DIR, p)).convert("RGBA")
-        p_img = p_img.resize((120, 120))
-        img.paste(p_img, (x_epp, 1380), p_img)
-        x_epp += 140
+        try:
+            logo_img = Image.open(LOGO_PATH).convert("RGBA")
+            logo_img.thumbnail((col_left_w - 20, row1_h - 15), Image.Resampling.LANCZOS)
+            lx = (col_left_w - logo_img.width) // 2
+            ly = y_curr + (row1_h - logo_img.height) // 2
+            img.paste(logo_img, (lx, ly), logo_img)
+        except Exception:
+            draw.text((20, y_curr + row1_h // 2 - 10), "COLMENA SEGUROS", fill="black", font=font_header_title)
+    else:
+        draw.text((20, y_curr + row1_h // 2 - 10), "COLMENA SEGUROS", fill="black", font=font_header_title)
         
-    draw.text((870, 1320), "Información del Proveedor:", font=font_title, fill="black")
-    draw_wrapped_text(draw, prov, 870, 1380, 600, font_body)
-
-    # Mostrar y Descargar
-    st.image(img, caption="Previsualización de Etiqueta")
+    # Columna 2 (Nombre del Producto)
+    prod_bbox = draw.textbbox((0, 0), product_name.upper(), font=font_prod_name)
+    pw = prod_bbox[2] - prod_bbox[0]
+    ph = prod_bbox[3] - prod_bbox[1]
+    center_x = col_left_w + (col_right_w - col_left_w) // 2 - pw // 2
+    center_y = y_curr + (row1_h - ph) // 2
+    draw.text((center_x, center_y), product_name.upper(), fill="black", font=font_prod_name)
     
-    img.save("etiqueta_pro.png")
-    with open("etiqueta_pro.png", "rb") as f:
-        st.download_button("Descargar Etiqueta en Alta Resolución", f, "etiqueta.png", "image/png")
+    # Columna 3 (Composición)
+    comp_x_start = WIDTH - col_left_w
+    draw.rectangle([comp_x_start, y_curr, WIDTH - 1, y_curr + 30], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
+    draw.text((comp_x_start + 45, y_curr + 6), "COMPOSICIÓN", fill="black", font=font_body_bold)
+    
+    cy = y_curr + 36
+    for line in comp_lines:
+        line_bbox = draw.textbbox((0, 0), line, font=font_small)
+        lw = line_bbox[2] - line_bbox[0]
+        lx = comp_x_start + (col_left_w - lw) // 2
+        draw.text((lx, cy), line, fill="#1F2937", font=font_small)
+        cy += font_small.size + 4
+        
+    y_curr += row1_h
+    
+    # ==========================================================================
+    # FILA 2: Palabra de Advertencia
+    # ==========================================================================
+    draw.line([(0, y_curr + row2_h), (WIDTH, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
+    draw.line([(col_left_w, y_curr), (col_left_w, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
+    
+    # Título Izquierda
+    draw.text((20, y_curr + 14), "Palabra de Advertencia", fill="black", font=font_body_bold)
+    
+    # Valor Derecha
+    sig_color = "#DC2626" if signal_word == "Peligro" else "#D97706"
+    sig_bbox = draw.textbbox((0, 0), signal_word.upper(), font=font_signal)
+    sw = sig_bbox[2] - sig_bbox[0]
+    sx = col_left_w + (col_right_w - sw) // 2
+    draw.text((sx, y_curr + 12), signal_word.upper(), fill=sig_color, font=font_signal)
+    
+    y_curr += row2_h
+    
+    # ==========================================================================
+    # FILA 3 Y 4 UNIFICADA: SGA (Izq) | Frases H y Frases P (Der)
+    # ==========================================================================
+    # Línea inferior de la sección central
+    draw.line([(0, y_curr + middle_section_h), (WIDTH, y_curr + middle_section_h)], fill="black", width=LINE_THICKNESS)
+    # Divisor vertical entre columna izquierda (SGA) y columna derecha (Frases H & P)
+    draw.line([(col_left_w, y_curr), (col_left_w, y_curr + middle_section_h)], fill="black", width=LINE_THICKNESS)
+    
+    # --- COLUMNA IZQUIERDA: PICTOGRAMAS SGA ---
+    draw.rectangle([0, y_curr, col_left_w, y_curr + 28], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
+    draw.text((40, y_curr + 5), "PICTOGRAMAS SGA", fill="black", font=font_body_bold)
+    
+    if selected_sga:
+        sx = 15
+        sy = y_curr + 38
+        icon_size = 65 if len(selected_sga) <= 2 else 55
+        for idx, sga_file in enumerate(selected_sga):
+            sga_path = os.path.join(SGA_DIR, sga_file)
+            if os.path.exists(sga_path):
+                try:
+                    s_img = Image.open(sga_path).convert("RGBA")
+                    s_img = s_img.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+                    img.paste(s_img, (sx, sy), s_img)
+                    sx += icon_size + 12
+                    if sx + icon_size > col_left_w:
+                        sx = 15
+                        sy += icon_size + 10
+                except Exception:
+                    pass
+
+    # --- COLUMNA DERECHA: FRASES H (SUPERIOR) & FRASES P (INFERIOR) ---
+    # Calcular división horizontal proporcional en la columna derecha
+    h_block_height = int(middle_section_h * (h_box_h / right_col_total_h))
+    
+    # 1. Bloque Frases H
+    draw.rectangle([col_left_w, y_curr, WIDTH - 1, y_curr + 28], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
+    draw.text((col_left_w + 200, y_curr + 5), "INDICACIONES DE PELIGRO (FRASES H)", fill="black", font=font_body_bold)
+    
+    hy = y_curr + 36
+    for line in h_lines:
+        line_bbox = draw.textbbox((0, 0), line, font=font_body)
+        lw = line_bbox[2] - line_bbox[0]
+        lx = col_left_w + (col_right_w - lw) // 2
+        draw.text((lx, hy), line, fill="black", font=font_body)
+        hy += font_body.size + 4
+        
+    # Línea divisoria entre Frases H y Frases P
+    p_start_y = y_curr + h_block_height
+    draw.line([(col_left_w, p_start_y), (WIDTH, p_start_y)], fill="black", width=LINE_THICKNESS)
+    
+    # 2. Bloque Frases P
+    draw.rectangle([col_left_w, p_start_y, WIDTH - 1, p_start_y + 28], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
+    draw.text((col_left_w + 200, p_start_y + 5), "CONSEJOS DE PRUDENCIA (FRASES P)", fill="black", font=font_body_bold)
+    
+    py = p_start_y + 36
+    for line in p_lines:
+        line_bbox = draw.textbbox((0, 0), line, font=font_body)
+        lw = line_bbox[2] - line_bbox[0]
+        lx = col_left_w + (col_right_w - lw) // 2
+        draw.text((lx, py), line, fill="black", font=font_body)
+        py += font_body.size + 4
+        
+    y_curr += middle_section_h
+    
+    # ==========================================================================
+    # FILA 5: UN | EPP | PROVEEDOR
+    # ==========================================================================
+    w_col1 = 250
+    w_col2 = 430
+    w_col3 = WIDTH - w_col1 - w_col2
+    
+    draw.line([(w_col1, y_curr), (w_col1, y_curr + row5_h)], fill="black", width=LINE_THICKNESS)
+    draw.line([(w_col1 + w_col2, y_curr), (w_col1 + w_col2, y_curr + row5_h)], fill="black", width=LINE_THICKNESS)
+    
+    # 5.1 UN Transport
+    draw.rectangle([0, y_curr, w_col1, y_curr + 26], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
+    draw.text((15, y_curr + 5), "PICTOGRAMAS NACIONES UNIDAS", fill="black", font=load_font(12, is_bold=True))
+    
+    if selected_un_file:
+        un_path = os.path.join(UN_DIR, selected_un_file)
+        if os.path.exists(un_path):
+            try:
+                un_img = Image.open(un_path).convert("RGBA")
+                un_img.thumbnail((70, 70), Image.Resampling.LANCZOS)
+                img.paste(un_img, (w_col1 // 2 - un_img.width // 2, y_curr + 32), un_img)
+            except Exception:
+                pass
+    draw.text((20, y_curr + row5_h - 25), f"Identificación UN: {un_code}", fill="black", font=font_body_bold)
+    
+    # 5.2 EPP
+    draw.rectangle([w_col1, y_curr, w_col1 + w_col2, y_curr + 26], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
+    draw.text((w_col1 + 40, y_curr + 5), "EPP (ELEMENTOS PROTECCIÓN PERSONAL A USAR)", fill="black", font=load_font(12, is_bold=True))
+    
+    if selected_epp:
+        ex = w_col1 + 20
+        ey = y_curr + 38
+        epp_icon_size = 50
+        for epp_file in selected_epp:
+            epp_path = os.path.join(EPP_DIR, epp_file)
+            if os.path.exists(epp_path):
+                try:
+                    e_img = Image.open(epp_path).convert("RGBA")
+                    # Crear fondo circular azul
+                    circle_bg = Image.new("RGBA", (epp_icon_size, epp_icon_size), (0, 0, 0, 0))
+                    c_draw = ImageDraw.Draw(circle_bg)
+                    c_draw.ellipse([0, 0, epp_icon_size - 1, epp_icon_size - 1], fill="#0055A5")
+                    
+                    e_img.thumbnail((epp_icon_size - 10, epp_icon_size - 10), Image.Resampling.LANCZOS)
+                    circle_bg.paste(e_img, ((epp_icon_size - e_img.width) // 2, (epp_icon_size - e_img.height) // 2), e_img)
+                    
+                    img.paste(circle_bg, (ex, ey), circle_bg)
+                    ex += epp_icon_size + 15
+                except Exception:
+                    pass
+
+    # 5.3 Proveedor
+    draw.rectangle([w_col1 + w_col2, y_curr, WIDTH - 1, y_curr + 26], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
+    draw.text((w_col1 + w_col2 + 40, y_curr + 5), "INFORMACIÓN DEL PROVEEDOR", fill="black", font=load_font(12, is_bold=True))
+    
+    p_y = y_curr + 35
+    for line in provider_lines:
+        line_bbox = draw.textbbox((0, 0), line, font=font_provider)
+        lw = line_bbox[2] - line_bbox[0]
+        lx = w_col1 + w_col2 + (w_col3 - lw) // 2
+        draw.text((lx, p_y), line, fill="#111827", font=font_provider)
+        p_y += font_provider.size + 4
+
+    return img
+
+# ==============================================================================
+# VISTA PRINCIPAL Y EXPORTACIÓN DE IMAGEN EN STREAMLIT
+# ==============================================================================
+st.title("🏷️ Generador de Etiquetas SGA - Colmena Seguros")
+st.markdown("Genera automáticamente etiquetas de seguridad química en alta resolución basadas en la norma NTC 4435 / SGA Colmena.")
+
+# Generar etiqueta en memoria
+generated_label_img = generate_chemical_label()
+
+# Convertir PIL Image a PNG Bytes
+buf = BytesIO()
+generated_label_img.save(buf, format="PNG")
+png_bytes = buf.getvalue()
+
+# Mostrar Vista Previa
+col_center, _ = st.columns([1, 0.01])
+with col_center:
+    st.image(generated_label_img, use_container_width=True, caption="Vista Previa de Etiqueta Generada Dinámicamente")
+
+st.divider()
+
+# Botón de Descarga
+clean_filename = f"Etiqueta_SGA_Colmena_{(product_name or 'producto').replace(' ', '_')}.png"
+st.download_button(
+    label="📥 Descargar Etiqueta en formato PNG",
+    data=png_bytes,
+    file_name=clean_filename,
+    mime="image/png",
+    type="primary",
+    use_container_width=True
+)
