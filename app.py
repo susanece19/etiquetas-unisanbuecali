@@ -169,14 +169,18 @@ def generate_chemical_label_custom(
     
     temp_img = Image.new("RGB", (WIDTH, 2000), "white")
     draw = ImageDraw.Draw(temp_img)
-    
-    font_header_title = load_font(18, is_bold=True)
-    font_prod_name = load_font(32, is_bold=True)
-    font_signal = load_font(22, is_bold=True)
-    font_body = load_font(15, is_bold=False)
-    font_body_bold = load_font(15, is_bold=True)
-    font_small = load_font(13, is_bold=False)
-    font_provider = load_font(14, is_bold=False)
+
+    # ==============================================================================
+    # 🔤 CONFIGURACIÓN DE TAMAÑOS DE FUENTE (¡AQUÍ PUEDES CAMBIAR EL TAMAÑO DE LETRA!)
+    # Puedes modificar directamente los números base o usar la variable `scale`
+    # ==============================================================================
+    font_header_title = load_font(20 * scale, is_bold=True)  # Título "COLMENA SEGUROS"
+    font_prod_name    = load_font(36 * scale, is_bold=True)  # Nombre del Producto (ej: VARSOL)
+    font_signal       = load_font(26 * scale, is_bold=True)  # Palabra "ATENCIÓN" o "PELIGRO"
+    font_body         = load_font(17 * scale, is_bold=False) # Frases H y Frases P
+    font_body_bold    = load_font(16 * scale, is_bold=True)  # Encabezados de sección (ej: INDICACIONES DE PELIGRO)
+    font_small        = load_font(14 * scale, is_bold=False) # Texto de Composición
+    font_provider     = load_font(15 * scale, is_bold=False) # Datos del Proveedor
     
     col_left_w = 260
     col_right_w = WIDTH - col_left_w
