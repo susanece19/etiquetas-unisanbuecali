@@ -1,6 +1,0 @@
-{
-  "name": "Generador de Etiquetas SGA - Colmena Seguros",
-  "description": "Generador de etiquetas de seguridad química SGA/GHS en formato PNG basado en la estructura institucional de Colmena Seguros.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
