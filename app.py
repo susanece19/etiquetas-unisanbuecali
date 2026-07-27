@@ -266,7 +266,7 @@ def generate_chemical_label_custom(
     font_small        = load_font(15 * scale, is_bold=False) # Texto de Composición
     font_provider     = load_font(15 * scale, is_bold=False) # Datos del Proveedor
     
-    col_left_w = 260
+    col_left_w = 300
     col_right_w = WIDTH - col_left_w
 
     # Ancho máximo seguro para que el texto nunca toque las líneas verticales
@@ -363,11 +363,13 @@ def generate_chemical_label_custom(
         cy += font_small.size + 4
         
     y_curr += row1_h
-    
+
     # FILA 2
     draw.line([(0, y_curr + row2_h), (WIDTH, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
     draw.line([(col_left_w, y_curr), (col_left_w, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
-    draw.text((PADDING_INNER, y_curr + (row2_h - 20) // 2), "PALABRA DE ADVERTENCIA", fill="black", font=font_body_bold)
+    p_adv_bbox = draw.textbbox((0, 0), "Palabra de Advertencia", font=font_body_bold)
+    p_adv_h = p_adv_bbox[3] - p_adv_bbox[1]
+    draw.text((PADDING_INNER, y_curr + (row2_h - p_adv_h) // 2), "Palabra de Advertencia", fill="black", font=font_body_bold)
     
     sig_color = "#DC2626" if s_word == "Peligro" else "#D97706"
     sig_bbox = draw.textbbox((0, 0), s_word.upper(), font=font_signal)
