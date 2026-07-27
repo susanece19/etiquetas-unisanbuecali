@@ -413,7 +413,7 @@ if mode == "Etiqueta Individual":
     
     generated_label_img = generate_chemical_label_custom(
         product_name, composition_text, signal_word, selected_sga,
-        h_phrases_text, p_phrases_text, selected_un_file, un_code, selected_epp, provider_text
+        h_phrases_text, p_phrases_text, selected_un_file, un_code, selected_epp, provider_text,
         scale=font_scale
     )
     
