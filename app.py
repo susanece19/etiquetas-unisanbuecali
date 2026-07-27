@@ -490,7 +490,7 @@ else:
                         prov_text = r.get("Proveedor", "CONSTELACIÓN INDUSTRIAL S.A.S")
 
                         img = generate_chemical_label_custom(
-                            p_name, c_text, s_word, sga_list, h_text, p_text, un_file, un_num, epp_list, prov_text
+                            p_name, c_text, s_word, sga_list, h_text, p_text, un_file, un_num, epp_list, prov_text,
                             scale=1.1
                         )
                         
