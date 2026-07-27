@@ -266,7 +266,7 @@ def generate_chemical_label_custom(
     font_small        = load_font(15 * scale, is_bold=False) # Texto de Composición
     font_provider     = load_font(15 * scale, is_bold=False) # Datos del Proveedor
     
-    col_left_w = 260
+    col_left_w = 280
     col_right_w = WIDTH - col_left_w
 
     # Ancho máximo seguro para que el texto nunca toque las líneas verticales
