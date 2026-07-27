@@ -160,19 +160,22 @@ def wrap_and_measure_text(draw, text, font, max_width):
     return lines, total_height, line_heights
 
 def generate_chemical_label_custom(
-    p_name, c_text, s_word, sga_list, h_text, p_text, un_file, un_num, epp_list, prov_text
+    p_name, c_text, s_word, sga_list, h_text, p_text, un_file, un_num, epp_list, prov_text, scale=1.1
 ):
     """Genera la imagen PNG de la etiqueta ajustada dinámicamente según el contenido."""
     WIDTH = 1000
     LINE_THICKNESS = 2
     
+    scale = scale if scale is not None else 1.1
+    
     temp_img = Image.new("RGB", (WIDTH, 2000), "white")
     draw = ImageDraw.Draw(temp_img)
 
     # ==============================================================================
-    # 🔤 CONFIGURACIÓN DE TAMAÑOS DE FUENTE (¡AQUÍ PUEDES CAMBIAR EL TAMAÑO DE LETRA!)
+    # 🔤 CONFIGURACIÓN DE TAMAÑOS DE FUENTE
     # Puedes modificar directamente los números base o usar la variable `scale`
     # ==============================================================================
+    
     font_header_title = load_font(20 * scale, is_bold=True)  # Título "COLMENA SEGUROS"
     font_prod_name    = load_font(36 * scale, is_bold=True)  # Nombre del Producto (ej: VARSOL)
     font_signal       = load_font(26 * scale, is_bold=True)  # Palabra "ATENCIÓN" o "PELIGRO"
