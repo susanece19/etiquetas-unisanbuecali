@@ -47,9 +47,22 @@ mode = st.sidebar.radio(
 
 st.sidebar.divider()
 
+font_scale = 1.0
+
 if mode == "Etiqueta Individual":
     st.sidebar.title("🛠️ Configuración de Etiqueta")
     st.sidebar.markdown("Estructura de **Colmena Seguros (Modelo VARSOL)**")
+
+    # Control interactivo de escala de tamaño de letra
+    with st.sidebar.expander("🔤 Ajustes de Tamaño de Letra / Tipografía", expanded=True):
+        font_scale = st.slider(
+            "Multiplicador de Tamaño de Letra",
+            min_value=0.8,
+            max_value=2.0,
+            value=1.1,
+            step=0.1,
+            help="Aumenta o disminuye proporcionalmente la letra en toda la etiqueta."
+        )
 
     # 1. Nombre del Producto
     product_name = st.sidebar.text_input(
@@ -123,27 +136,42 @@ if mode == "Etiqueta Individual":
 # ==============================================================================
 
 def load_font(size, is_bold=False):
-    """Carga una fuente Truetype del sistema o fuente por defecto de Pillow."""
-    font_names = [
+    """Carga una fuente Truetype buscando en el sistema o usando la fuente por defecto escalable de Pillow."""
+    size = int(size)
+    font_paths = [
+        # Nombres de fuentes estándar
         "DejaVuSans-Bold.ttf" if is_bold else "DejaVuSans.ttf",
         "arialbd.ttf" if is_bold else "arial.ttf",
         "LiberationSans-Bold.ttf" if is_bold else "LiberationSans-Regular.ttf",
+        # Rutas completas comunes en Linux / Streamlit Cloud / Ubuntu / Debian
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if is_bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if is_bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if is_bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
     ]
-    for name in font_names:
+    for path in font_paths:
         try:
-            return ImageFont.truetype(name, size)
+            return ImageFont.truetype(path, size)
         except OSError:
             continue
-    return ImageFont.load_default()
+    
+    # Intenta usar la fuente por defecto escalable de Pillow (Pillow >= 10.1)
+    try:
+        return ImageFont.load_default(size=size)
+    except Exception:
+        return ImageFont.load_default()
 
 def wrap_and_measure_text(draw, text, font, max_width):
     """Ajusta líneas de texto al ancho máximo dado y calcula la altura requerida."""
     lines = []
+    font_size = getattr(font, "size", 16)
+    
     for raw_line in text.split('\n'):
         if not raw_line.strip():
             lines.append("")
             continue
-        wrapped = textwrap.wrap(raw_line, width=max(15, int(max_width / (font.size * 0.55))))
+        char_width = max(6.0, font_size * 0.52)
+        max_chars = max(8, int(max_width / char_width))
+        wrapped = textwrap.wrap(raw_line, width=max_chars)
         lines.extend(wrapped)
     
     total_height = 0
@@ -151,51 +179,49 @@ def wrap_and_measure_text(draw, text, font, max_width):
     for line in lines:
         if line:
             bbox = draw.textbbox((0, 0), line, font=font)
-            h = bbox[3] - bbox[1] + 4
+            h = bbox[3] - bbox[1] + 6
         else:
-            h = font.size + 4
+            h = font.size + 6
         line_heights.append(h)
         total_height += h
         
     return lines, total_height, line_heights
 
 def generate_chemical_label_custom(
-    p_name, c_text, s_word, sga_list, h_text, p_text, un_file, un_num, epp_list, prov_text, scale=1.1
+    p_name, c_text, s_word, sga_list, h_text, p_text, un_file, un_num, epp_list, prov_text, scale=1.2
 ):
     """Genera la imagen PNG de la etiqueta ajustada dinámicamente según el contenido."""
     WIDTH = 1000
     LINE_THICKNESS = 2
     
-    scale = scale if scale is not None else 1.1
+    scale = scale if scale is not None else 1.2
     
-    temp_img = Image.new("RGB", (WIDTH, 2000), "white")
+    temp_img = Image.new("RGB", (WIDTH, 3000), "white")
     draw = ImageDraw.Draw(temp_img)
 
     # ==============================================================================
     # 🔤 CONFIGURACIÓN DE TAMAÑOS DE FUENTE
-    # Puedes modificar directamente los números base o usar la variable `scale`
     # ==============================================================================
-    
-    font_header_title = load_font(30 * scale, is_bold=True)  # Título "COLMENA SEGUROS"
-    font_prod_name    = load_font(50 * scale, is_bold=True)  # Nombre del Producto (ej: VARSOL)
+    font_header_title = load_font(22 * scale, is_bold=True)  # Título "COLMENA SEGUROS"
+    font_prod_name    = load_font(44 * scale, is_bold=True)  # Nombre del Producto (ej: VARSOL)
     font_signal       = load_font(30 * scale, is_bold=True)  # Palabra "ATENCIÓN" o "PELIGRO"
-    font_body         = load_font(17 * scale, is_bold=False) # Frases H y Frases P
-    font_body_bold    = load_font(16 * scale, is_bold=True)  # Encabezados de sección (ej: INDICACIONES DE PELIGRO)
-    font_small        = load_font(14 * scale, is_bold=False) # Texto de Composición
-    font_provider     = load_font(15 * scale, is_bold=False) # Datos del Proveedor
+    font_body         = load_font(20 * scale, is_bold=False) # Frases H y Frases P
+    font_body_bold    = load_font(18 * scale, is_bold=True)  # Encabezados de sección (ej: INDICACIONES DE PELIGRO)
+    font_small        = load_font(16 * scale, is_bold=False) # Texto de Composición
+    font_provider     = load_font(16 * scale, is_bold=False) # Datos del Proveedor
     
     col_left_w = 260
     col_right_w = WIDTH - col_left_w
     
     comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_small, col_left_w - 20)
-    row1_h = max(110, comp_h + 40)
-    row2_h = 50
+    row1_h = max(110, comp_h + 45)
+    row2_h = int(55 * scale)
     
     h_lines, h_text_h, _ = wrap_and_measure_text(draw, h_text, font_body, col_right_w - 40)
     p_lines, p_text_h, _ = wrap_and_measure_text(draw, p_text, font_body, col_right_w - 40)
     
-    h_box_h = max(80, h_text_h + 40)
-    p_box_h = max(100, p_text_h + 40)
+    h_box_h = max(90, h_text_h + 45)
+    p_box_h = max(110, p_text_h + 45)
     right_col_total_h = h_box_h + p_box_h
     
     sga_count = len(sga_list)
@@ -203,7 +229,7 @@ def generate_chemical_label_custom(
     middle_section_h = max(sga_min_h, right_col_total_h)
     
     provider_lines, prov_h, _ = wrap_and_measure_text(draw, prov_text, font_provider, 300)
-    row5_h = max(140, prov_h + 45)
+    row5_h = max(140, prov_h + 50)
     
     TOTAL_HEIGHT = row1_h + row2_h + middle_section_h + row5_h
     
@@ -292,7 +318,7 @@ def generate_chemical_label_custom(
     h_block_height = int(middle_section_h * (h_box_h / right_col_total_h))
     
     draw.rectangle([col_left_w, y_curr, WIDTH - 1, y_curr + 28], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((col_left_w + 200, y_curr + 5), "INDICACIONES DE PELIGRO (FRASES H)", fill="black", font=font_body_bold)
+    draw.text((col_left_w + 180, y_curr + 5), "INDICACIONES DE PELIGRO (FRASES H)", fill="black", font=font_body_bold)
     
     hy = y_curr + 36
     for line in h_lines:
@@ -306,7 +332,7 @@ def generate_chemical_label_custom(
     draw.line([(col_left_w, p_start_y), (WIDTH, p_start_y)], fill="black", width=LINE_THICKNESS)
     
     draw.rectangle([col_left_w, p_start_y, WIDTH - 1, p_start_y + 28], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((col_left_w + 200, p_start_y + 5), "CONSEJOS DE PRUDENCIA (FRASES P)", fill="black", font=font_body_bold)
+    draw.text((col_left_w + 180, p_start_y + 5), "CONSEJOS DE PRUDENCIA (FRASES P)", fill="black", font=font_body_bold)
     
     py = p_start_y + 36
     for line in p_lines:
@@ -327,7 +353,7 @@ def generate_chemical_label_custom(
     draw.line([(w_col1 + w_col2, y_curr), (w_col1 + w_col2, y_curr + row5_h)], fill="black", width=LINE_THICKNESS)
     
     draw.rectangle([0, y_curr, w_col1, y_curr + 26], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((15, y_curr + 5), "PICTOGRAMAS NACIONES UNIDAS", fill="black", font=load_font(12, is_bold=True))
+    draw.text((15, y_curr + 5), "PICTOGRAMAS NACIONES UNIDAS", fill="black", font=load_font(12 * scale, is_bold=True))
     
     if un_file:
         un_path = os.path.join(UN_DIR, un_file)
@@ -338,10 +364,10 @@ def generate_chemical_label_custom(
                 img.paste(un_img, (w_col1 // 2 - un_img.width // 2, y_curr + 32), un_img)
             except Exception:
                 pass
-    draw.text((20, y_curr + row5_h - 25), f"Identificación UN: {un_num}", fill="black", font=font_body_bold)
+    draw.text((20, y_curr + row5_h - 28), f"Identificación UN: {un_num}", fill="black", font=font_body_bold)
     
     draw.rectangle([w_col1, y_curr, w_col1 + w_col2, y_curr + 26], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((w_col1 + 40, y_curr + 5), "EPP (ELEMENTOS PROTECCIÓN PERSONAL A USAR)", fill="black", font=load_font(12, is_bold=True))
+    draw.text((w_col1 + 30, y_curr + 5), "EPP (ELEMENTOS PROTECCIÓN PERSONAL A USAR)", fill="black", font=load_font(12 * scale, is_bold=True))
     
     if epp_list:
         ex = w_col1 + 20
@@ -365,7 +391,7 @@ def generate_chemical_label_custom(
                     pass
 
     draw.rectangle([w_col1 + w_col2, y_curr, WIDTH - 1, y_curr + 26], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((w_col1 + w_col2 + 40, y_curr + 5), "INFORMACIÓN DEL PROVEEDOR", fill="black", font=load_font(12, is_bold=True))
+    draw.text((w_col1 + w_col2 + 40, y_curr + 5), "INFORMACIÓN DEL PROVEEDOR", fill="black", font=load_font(12 * scale, is_bold=True))
     
     p_y = y_curr + 35
     for line in provider_lines:
@@ -388,6 +414,7 @@ if mode == "Etiqueta Individual":
     generated_label_img = generate_chemical_label_custom(
         product_name, composition_text, signal_word, selected_sga,
         h_phrases_text, p_phrases_text, selected_un_file, un_code, selected_epp, provider_text
+        scale=font_scale
     )
     
     buf = BytesIO()
@@ -464,6 +491,7 @@ else:
 
                         img = generate_chemical_label_custom(
                             p_name, c_text, s_word, sga_list, h_text, p_text, un_file, un_num, epp_list, prov_text
+                            scale=1.1
                         )
                         
                         img_byte_arr = BytesIO()
