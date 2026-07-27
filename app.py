@@ -20,10 +20,35 @@ st.set_page_config(
 # RUTAS DE ASSETS
 # ==============================================================================
 ASSETS_DIR = "assets"
+FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
 LOGO_PATH = os.path.join(ASSETS_DIR, "logo_colmena.png")
 SGA_DIR = os.path.join(ASSETS_DIR, "sga")
 EPP_DIR = os.path.join(ASSETS_DIR, "epp")
 UN_DIR = os.path.join(ASSETS_DIR, "un")
+
+def ensure_local_fonts():
+    """Descarga automáticamente fuentes TrueType con soporte completo para tildes (á, é, í, ó, ú, ñ) en assets/fonts/ si no existen."""
+    os.makedirs(FONTS_DIR, exist_ok=True)
+    reg_font_path = os.path.join(FONTS_DIR, "DejaVuSans.ttf")
+    bold_font_path = os.path.join(FONTS_DIR, "DejaVuSans-Bold.ttf")
+
+    if not os.path.exists(reg_font_path) or not os.path.exists(bold_font_path):
+        import urllib.request
+        try:
+            if not os.path.exists(reg_font_path):
+                urllib.request.urlretrieve(
+                    "https://cdn.jsdelivr.net/fontsource/fonts/dejavu-sans@latest/latin-400-normal.ttf",
+                    reg_font_path
+                )
+            if not os.path.exists(bold_font_path):
+                urllib.request.urlretrieve(
+                    "https://cdn.jsdelivr.net/fontsource/fonts/dejavu-sans@latest/latin-700-normal.ttf",
+                    bold_font_path
+                )
+        except Exception:
+            pass
+
+ensure_local_fonts()
 
 # Helper para listar archivos de imagen en un directorio
 def list_image_files(directory):
@@ -136,24 +161,36 @@ if mode == "Etiqueta Individual":
 # ==============================================================================
 
 def load_font(size, is_bold=False):
-    """Carga una fuente Truetype buscando en el sistema o usando la fuente por defecto escalable de Pillow."""
+    """Carga una fuente Truetype buscando en la carpeta local assets/fonts o en el sistema para garantizar soporte de tildes (á, é, í, ó, ú, ñ)."""
     size = int(size)
+    local_ttf = os.path.join(FONTS_DIR, "DejaVuSans-Bold.ttf" if is_bold else "DejaVuSans.ttf")
+    
     font_paths = [
-        # Nombres de fuentes estándar
+        # 1. Fuentes descargadas localmente en assets/fonts/
+        local_ttf,
+        # 2. Fuentes en el directorio de trabajo local
         "DejaVuSans-Bold.ttf" if is_bold else "DejaVuSans.ttf",
         "arialbd.ttf" if is_bold else "arial.ttf",
         "LiberationSans-Bold.ttf" if is_bold else "LiberationSans-Regular.ttf",
-        # Rutas completas comunes en Linux / Streamlit Cloud / Ubuntu / Debian
+        # 3. Rutas completas comunes en Linux / Streamlit Cloud / Ubuntu / Debian
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if is_bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if is_bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
         "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if is_bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
     ]
     for path in font_paths:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+    
+    # Intento de carga directa si el sistema resuelve el nombre
+    for name in ["DejaVuSans-Bold.ttf" if is_bold else "DejaVuSans.ttf", "LiberationSans-Regular.ttf"]:
         try:
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(name, size)
         except OSError:
             continue
-    
+
     # Intenta usar la fuente por defecto escalable de Pillow (Pillow >= 10.1)
     try:
         return ImageFont.load_default(size=size)
