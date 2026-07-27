@@ -1,5 +1,6 @@
 import os
 import textwrap
+import math
 import csv
 import zipfile
 from io import BytesIO, StringIO
@@ -198,29 +199,46 @@ def load_font(size, is_bold=False):
         return ImageFont.load_default()
 
 def wrap_and_measure_text(draw, text, font, max_width):
-    """Ajusta líneas de texto al ancho máximo dado y calcula la altura requerida."""
+    """Ajusta líneas de texto al ancho máximo exactamente con Pillow para evitar desbordamientos."""
     lines = []
+    line_heights = []
+    total_height = 0
     font_size = getattr(font, "size", 16)
     
     for raw_line in text.split('\n'):
         if not raw_line.strip():
             lines.append("")
+            h = font_size + 6
+            line_heights.append(h)
+            total_height += h
             continue
-        char_width = max(6.0, font_size * 0.52)
-        max_chars = max(8, int(max_width / char_width))
-        wrapped = textwrap.wrap(raw_line, width=max_chars)
-        lines.extend(wrapped)
-    
-    total_height = 0
-    line_heights = []
-    for line in lines:
-        if line:
-            bbox = draw.textbbox((0, 0), line, font=font)
-            h = bbox[3] - bbox[1] + 6
-        else:
-            h = font.size + 6
-        line_heights.append(h)
-        total_height += h
+        
+        words = raw_line.split(' ')
+        current_line = []
+        
+        for word in words:
+            test_line = ' '.join(current_line + [word])
+            bbox = draw.textbbox((0, 0), test_line, font=font)
+            line_w = bbox[2] - bbox[0]
+            
+            if line_w <= max_width or not current_line:
+                current_line.append(word)
+            else:
+                line_str = ' '.join(current_line)
+                lines.append(line_str)
+                bbox_line = draw.textbbox((0, 0), line_str, font=font)
+                h = (bbox_line[3] - bbox_line[1]) + 6
+                line_heights.append(h)
+                total_height += h
+                current_line = [word]
+                
+        if current_line:
+            line_str = ' '.join(current_line)
+            lines.append(line_str)
+            bbox_line = draw.textbbox((0, 0), line_str, font=font)
+            h = (bbox_line[3] - bbox_line[1]) + 6
+            line_heights.append(h)
+            total_height += h
         
     return lines, total_height, line_heights
 
@@ -230,6 +248,7 @@ def generate_chemical_label_custom(
     """Genera la imagen PNG de la etiqueta ajustada dinámicamente según el contenido."""
     WIDTH = 1000
     LINE_THICKNESS = 2
+    PADDING_INNER = 20  # Margen de seguridad interno para que el texto no toque los bordes
     
     scale = scale if scale is not None else 1.2
     
