@@ -176,9 +176,9 @@ def generate_chemical_label_custom(
     # Puedes modificar directamente los números base o usar la variable `scale`
     # ==============================================================================
     
-    font_header_title = load_font(20 * scale, is_bold=True)  # Título "COLMENA SEGUROS"
-    font_prod_name    = load_font(36 * scale, is_bold=True)  # Nombre del Producto (ej: VARSOL)
-    font_signal       = load_font(26 * scale, is_bold=True)  # Palabra "ATENCIÓN" o "PELIGRO"
+    font_header_title = load_font(30 * scale, is_bold=True)  # Título "COLMENA SEGUROS"
+    font_prod_name    = load_font(50 * scale, is_bold=True)  # Nombre del Producto (ej: VARSOL)
+    font_signal       = load_font(30 * scale, is_bold=True)  # Palabra "ATENCIÓN" o "PELIGRO"
     font_body         = load_font(17 * scale, is_bold=False) # Frases H y Frases P
     font_body_bold    = load_font(16 * scale, is_bold=True)  # Encabezados de sección (ej: INDICACIONES DE PELIGRO)
     font_small        = load_font(14 * scale, is_bold=False) # Texto de Composición
