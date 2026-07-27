@@ -254,27 +254,31 @@ def generate_chemical_label_custom(
     
     temp_img = Image.new("RGB", (WIDTH, 3000), "white")
     draw = ImageDraw.Draw(temp_img)
-
+    
     # ==============================================================================
     # 🔤 CONFIGURACIÓN DE TAMAÑOS DE FUENTE
     # ==============================================================================
     font_header_title = load_font(22 * scale, is_bold=True)  # Título "COLMENA SEGUROS"
-    font_prod_name    = load_font(44 * scale, is_bold=True)  # Nombre del Producto (ej: VARSOL)
+    font_prod_name    = load_font(42 * scale, is_bold=True)  # Nombre del Producto (ej: VARSOL)
     font_signal       = load_font(30 * scale, is_bold=True)  # Palabra "ATENCIÓN" o "PELIGRO"
-    font_body         = load_font(20 * scale, is_bold=False) # Frases H y Frases P
-    font_body_bold    = load_font(18 * scale, is_bold=True)  # Encabezados de sección (ej: INDICACIONES DE PELIGRO)
-    font_small        = load_font(16 * scale, is_bold=False) # Texto de Composición
-    font_provider     = load_font(16 * scale, is_bold=False) # Datos del Proveedor
+    font_body         = load_font(19 * scale, is_bold=False) # Frases H y Frases P
+    font_body_bold    = load_font(17 * scale, is_bold=True)  # Encabezados de sección
+    font_small        = load_font(15 * scale, is_bold=False) # Texto de Composición
+    font_provider     = load_font(15 * scale, is_bold=False) # Datos del Proveedor
     
     col_left_w = 260
     col_right_w = WIDTH - col_left_w
     
-    comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_small, col_left_w - 20)
+    # Ancho máximo seguro para que el texto nunca toque las líneas verticales
+    comp_max_w = col_left_w - (PADDING_INNER * 2)
+    right_col_max_w = col_right_w - (PADDING_INNER * 2)
+    
+    comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_small, comp_max_w)
     row1_h = max(110, comp_h + 45)
     row2_h = int(55 * scale)
     
-    h_lines, h_text_h, _ = wrap_and_measure_text(draw, h_text, font_body, col_right_w - 40)
-    p_lines, p_text_h, _ = wrap_and_measure_text(draw, p_text, font_body, col_right_w - 40)
+    h_lines, h_text_h, _ = wrap_and_measure_text(draw, h_text, font_body, right_col_max_w)
+    p_lines, p_text_h, _ = wrap_and_measure_text(draw, p_text, font_body, right_col_max_w)
     
     h_box_h = max(90, h_text_h + 45)
     p_box_h = max(110, p_text_h + 45)
@@ -284,7 +288,11 @@ def generate_chemical_label_custom(
     sga_min_h = 180 if sga_count <= 2 else 240 if sga_count <= 4 else 300
     middle_section_h = max(sga_min_h, right_col_total_h)
     
-    provider_lines, prov_h, _ = wrap_and_measure_text(draw, prov_text, font_provider, 300)
+    w_col1 = 250
+    w_col2 = 430
+    w_col3 = WIDTH - w_col1 - w_col2
+    
+    provider_lines, prov_h, _ = wrap_and_measure_text(draw, prov_text, font_provider, w_col3 - (PADDING_INNER * 2))
     row5_h = max(140, prov_h + 50)
     
     TOTAL_HEIGHT = row1_h + row2_h + middle_section_h + row5_h
@@ -315,19 +323,24 @@ def generate_chemical_label_custom(
     prod_bbox = draw.textbbox((0, 0), p_name.upper(), font=font_prod_name)
     pw = prod_bbox[2] - prod_bbox[0]
     ph = prod_bbox[3] - prod_bbox[1]
-    center_x = col_left_w + (col_right_w - col_left_w) // 2 - pw // 2
+    center_x = max(col_left_w + PADDING_INNER, col_left_w + (col_right_w - pw) // 2)
     center_y = y_curr + (row1_h - ph) // 2
     draw.text((center_x, center_y), p_name.upper(), fill="black", font=font_prod_name)
     
     comp_x_start = WIDTH - col_left_w
     draw.rectangle([comp_x_start, y_curr, WIDTH - 1, y_curr + 30], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((comp_x_start + 45, y_curr + 6), "COMPOSICIÓN", fill="black", font=font_body_bold)
+    
+    # Título "COMPOSICIÓN" centrado dinámicamente
+    c_hdr_bbox = draw.textbbox((0, 0), "COMPOSICIÓN", font=font_body_bold)
+    c_hdr_w = c_hdr_bbox[2] - c_hdr_bbox[0]
+    c_hdr_x = comp_x_start + (col_left_w - c_hdr_w) // 2
+    draw.text((c_hdr_x, y_curr + 6), "COMPOSICIÓN", fill="black", font=font_body_bold)
     
     cy = y_curr + 36
     for line in comp_lines:
         line_bbox = draw.textbbox((0, 0), line, font=font_small)
         lw = line_bbox[2] - line_bbox[0]
-        lx = comp_x_start + (col_left_w - lw) // 2
+        lx = max(comp_x_start + PADDING_INNER, comp_x_start + (col_left_w - lw) // 2)
         draw.text((lx, cy), line, fill="#1F2937", font=font_small)
         cy += font_small.size + 4
         
@@ -336,13 +349,13 @@ def generate_chemical_label_custom(
     # FILA 2
     draw.line([(0, y_curr + row2_h), (WIDTH, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
     draw.line([(col_left_w, y_curr), (col_left_w, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
-    draw.text((20, y_curr + 14), "PALABRA DE ADVERTENCIA", fill="black", font=font_body_bold)
+    draw.text((PADDING_INNER, y_curr + (row2_h - 20) // 2), "Palabra de Advertencia", fill="black", font=font_body_bold)
     
     sig_color = "#DC2626" if s_word == "Peligro" else "#D97706"
     sig_bbox = draw.textbbox((0, 0), s_word.upper(), font=font_signal)
     sw = sig_bbox[2] - sig_bbox[0]
-    sx = col_left_w + (col_right_w - sw) // 2
-    draw.text((sx, y_curr + 12), s_word.upper(), fill=sig_color, font=font_signal)
+    sx = max(col_left_w + PADDING_INNER, col_left_w + (col_right_w - sw) // 2)
+    draw.text((sx, y_curr + (row2_h - (sig_bbox[3] - sig_bbox[1])) // 2), s_word.upper(), fill=sig_color, font=font_signal)
     
     y_curr += row2_h
     
@@ -351,36 +364,79 @@ def generate_chemical_label_custom(
     draw.line([(col_left_w, y_curr), (col_left_w, y_curr + middle_section_h)], fill="black", width=LINE_THICKNESS)
     
     draw.rectangle([0, y_curr, col_left_w, y_curr + 28], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((40, y_curr + 5), "PICTOGRAMAS SGA", fill="black", font=font_body_bold)
+    sga_hdr_bbox = draw.textbbox((0, 0), "PICTOGRAMAS SGA", font=font_body_bold)
+    sga_hdr_w = sga_hdr_bbox[2] - sga_hdr_bbox[0]
+    draw.text(((col_left_w - sga_hdr_w) // 2, y_curr + 5), "PICTOGRAMAS SGA", fill="black", font=font_body_bold)
     
     if sga_list:
-        sx = 15
-        sy = y_curr + 38
-        icon_size = 65 if len(sga_list) <= 2 else 55
-        for sga_file in sga_list:
+        sga_count = len(sga_list)
+        box_y_start = y_curr + 30
+        box_h_avail = middle_section_h - 36
+        box_w_avail = col_left_w - 24  # 12px de margen a cada lado
+        
+        # Determinar número de columnas y filas óptimas según la cantidad
+        if sga_count == 1:
+            cols, rows = 1, 1
+        elif sga_count == 2:
+            cols, rows = 2, 1
+        elif sga_count in (3, 4):
+            cols, rows = 2, 2
+        elif sga_count in (5, 6):
+            cols, rows = 3, 2
+        elif sga_count in (7, 8, 9):
+            cols, rows = 3, 3
+        else:
+            cols = 3
+            rows = math.ceil(sga_count / cols)
+
+        gap_x = 10
+        gap_y = 10
+
+        max_w_per_icon = (box_w_avail - (cols - 1) * gap_x) // cols
+        max_h_per_icon = (box_h_avail - (rows - 1) * gap_y) // rows
+
+        # Tamaño del ícono ajustado dinámicamente al espacio máximo disponible
+        icon_size = max(35, min(max_w_per_icon, max_h_per_icon, 120))
+
+        # Ancho y alto total de la cuadrícula para centrado vertical y horizontal perfecto
+        grid_w = cols * icon_size + (cols - 1) * gap_x
+        grid_h = rows * icon_size + (rows - 1) * gap_y
+
+        start_y = box_y_start + max(4, (box_h_avail - grid_h) // 2)
+
+        for idx, sga_file in enumerate(sga_list):
+            r = idx // cols
+            c = idx % cols
+            
+            # Si la última fila tiene menos elementos, centrar esos elementos en esa fila
+            items_in_this_row = sga_count - r * cols if (r == rows - 1 and sga_count % cols != 0) else cols
+            row_w = items_in_this_row * icon_size + (items_in_this_row - 1) * gap_x
+            row_start_x = (col_left_w - row_w) // 2
+
+            px = row_start_x + c * (icon_size + gap_x)
+            py = start_y + r * (icon_size + gap_y)
+
             sga_path = os.path.join(SGA_DIR, sga_file)
             if os.path.exists(sga_path):
                 try:
                     s_img = Image.open(sga_path).convert("RGBA")
                     s_img = s_img.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
-                    img.paste(s_img, (sx, sy), s_img)
-                    sx += icon_size + 12
-                    if sx + icon_size > col_left_w:
-                        sx = 15
-                        sy += icon_size + 10
+                    img.paste(s_img, (int(px), int(py)), s_img)
                 except Exception:
                     pass
 
     h_block_height = int(middle_section_h * (h_box_h / right_col_total_h))
     
     draw.rectangle([col_left_w, y_curr, WIDTH - 1, y_curr + 28], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((col_left_w + 180, y_curr + 5), "INDICACIONES DE PELIGRO (FRASES H)", fill="black", font=font_body_bold)
+    h_hdr_bbox = draw.textbbox((0, 0), "INDICACIONES DE PELIGRO (FRASES H)", font=font_body_bold)
+    h_hdr_w = h_hdr_bbox[2] - h_hdr_bbox[0]
+    draw.text((col_left_w + (col_right_w - h_hdr_w) // 2, y_curr + 5), "INDICACIONES DE PELIGRO (FRASES H)", fill="black", font=font_body_bold)
     
     hy = y_curr + 36
     for line in h_lines:
         line_bbox = draw.textbbox((0, 0), line, font=font_body)
         lw = line_bbox[2] - line_bbox[0]
-        lx = col_left_w + (col_right_w - lw) // 2
+        lx = max(col_left_w + PADDING_INNER, col_left_w + (col_right_w - lw) // 2)
         draw.text((lx, hy), line, fill="black", font=font_body)
         hy += font_body.size + 4
         
@@ -388,28 +444,30 @@ def generate_chemical_label_custom(
     draw.line([(col_left_w, p_start_y), (WIDTH, p_start_y)], fill="black", width=LINE_THICKNESS)
     
     draw.rectangle([col_left_w, p_start_y, WIDTH - 1, p_start_y + 28], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((col_left_w + 180, p_start_y + 5), "CONSEJOS DE PRUDENCIA (FRASES P)", fill="black", font=font_body_bold)
+    p_hdr_bbox = draw.textbbox((0, 0), "CONSEJOS DE PRUDENCIA (FRASES P)", font=font_body_bold)
+    p_hdr_w = p_hdr_bbox[2] - p_hdr_bbox[0]
+    draw.text((col_left_w + (col_right_w - p_hdr_w) // 2, p_start_y + 5), "CONSEJOS DE PRUDENCIA (FRASES P)", fill="black", font=font_body_bold)
     
     py = p_start_y + 36
     for line in p_lines:
         line_bbox = draw.textbbox((0, 0), line, font=font_body)
         lw = line_bbox[2] - line_bbox[0]
-        lx = col_left_w + (col_right_w - lw) // 2
+        lx = max(col_left_w + PADDING_INNER, col_left_w + (col_right_w - lw) // 2)
         draw.text((lx, py), line, fill="black", font=font_body)
         py += font_body.size + 4
         
     y_curr += middle_section_h
     
     # FILA 5
-    w_col1 = 250
-    w_col2 = 430
-    w_col3 = WIDTH - w_col1 - w_col2
-    
     draw.line([(w_col1, y_curr), (w_col1, y_curr + row5_h)], fill="black", width=LINE_THICKNESS)
     draw.line([(w_col1 + w_col2, y_curr), (w_col1 + w_col2, y_curr + row5_h)], fill="black", width=LINE_THICKNESS)
     
+    font_hdr_sm = load_font(12 * scale, is_bold=True)
+    
     draw.rectangle([0, y_curr, w_col1, y_curr + 26], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((15, y_curr + 5), "PICTOGRAMAS NACIONES UNIDAS", fill="black", font=load_font(12 * scale, is_bold=True))
+    un_hdr_bbox = draw.textbbox((0, 0), "PICTOGRAMAS NACIONES UNIDAS", font=font_hdr_sm)
+    un_hdr_w = un_hdr_bbox[2] - un_hdr_bbox[0]
+    draw.text((max(8, (w_col1 - un_hdr_w) // 2), y_curr + 5), "PICTOGRAMAS NACIONES UNIDAS", fill="black", font=font_hdr_sm)
     
     if un_file:
         un_path = os.path.join(UN_DIR, un_file)
@@ -420,10 +478,12 @@ def generate_chemical_label_custom(
                 img.paste(un_img, (w_col1 // 2 - un_img.width // 2, y_curr + 32), un_img)
             except Exception:
                 pass
-    draw.text((20, y_curr + row5_h - 28), f"Identificación UN: {un_num}", fill="black", font=font_body_bold)
+    draw.text((PADDING_INNER, y_curr + row5_h - 28), f"Identificación UN: {un_num}", fill="black", font=font_body_bold)
     
     draw.rectangle([w_col1, y_curr, w_col1 + w_col2, y_curr + 26], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((w_col1 + 30, y_curr + 5), "EPP (ELEMENTOS PROTECCIÓN PERSONAL A USAR)", fill="black", font=load_font(12 * scale, is_bold=True))
+    epp_hdr_bbox = draw.textbbox((0, 0), "EPP (ELEMENTOS PROTECCIÓN PERSONAL A USAR)", font=font_hdr_sm)
+    epp_hdr_w = epp_hdr_bbox[2] - epp_hdr_bbox[0]
+    draw.text((w_col1 + max(8, (w_col2 - epp_hdr_w) // 2), y_curr + 5), "EPP (ELEMENTOS PROTECCIÓN PERSONAL A USAR)", fill="black", font=font_hdr_sm)
     
     if epp_list:
         ex = w_col1 + 20
@@ -447,13 +507,15 @@ def generate_chemical_label_custom(
                     pass
 
     draw.rectangle([w_col1 + w_col2, y_curr, WIDTH - 1, y_curr + 26], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
-    draw.text((w_col1 + w_col2 + 40, y_curr + 5), "INFORMACIÓN DEL PROVEEDOR", fill="black", font=load_font(12 * scale, is_bold=True))
+    prov_hdr_bbox = draw.textbbox((0, 0), "INFORMACIÓN DEL PROVEEDOR", font=font_hdr_sm)
+    prov_hdr_w = prov_hdr_bbox[2] - prov_hdr_bbox[0]
+    draw.text((w_col1 + w_col2 + max(8, (w_col3 - prov_hdr_w) // 2), y_curr + 5), "INFORMACIÓN DEL PROVEEDOR", fill="black", font=font_hdr_sm)
     
     p_y = y_curr + 35
     for line in provider_lines:
         line_bbox = draw.textbbox((0, 0), line, font=font_provider)
         lw = line_bbox[2] - line_bbox[0]
-        lx = w_col1 + w_col2 + (w_col3 - lw) // 2
+        lx = max(w_col1 + w_col2 + 10, w_col1 + w_col2 + (w_col3 - lw) // 2)
         draw.text((lx, p_y), line, fill="#111827", font=font_provider)
         p_y += font_provider.size + 4
 
