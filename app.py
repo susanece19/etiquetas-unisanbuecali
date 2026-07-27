@@ -317,7 +317,7 @@ def generate_chemical_label_custom(
     # FILA 2
     draw.line([(0, y_curr + row2_h), (WIDTH, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
     draw.line([(col_left_w, y_curr), (col_left_w, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
-    draw.text((20, y_curr + 14), "Palabra de Advertencia", fill="black", font=font_body_bold)
+    draw.text((20, y_curr + 14), "PALABRA DE ADVERTENCIA", fill="black", font=font_body_bold)
     
     sig_color = "#DC2626" if s_word == "Peligro" else "#D97706"
     sig_bbox = draw.textbbox((0, 0), s_word.upper(), font=font_signal)
