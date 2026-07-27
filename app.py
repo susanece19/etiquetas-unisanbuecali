@@ -2,6 +2,7 @@ import os
 import textwrap
 import math
 import csv
+import re
 import zipfile
 from io import BytesIO, StringIO
 import streamlit as st
@@ -107,7 +108,7 @@ if mode == "Etiqueta Individual":
     # 3. Palabra de Advertencia
     signal_word = st.sidebar.selectbox(
         "3. Palabra de Advertencia",
-        options=["Atención", "Peligro","Ninguna"],
+        options=["Atención", "Peligro"],
         index=0
     )
 
@@ -242,6 +243,243 @@ def wrap_and_measure_text(draw, text, font, max_width):
         
     return lines, total_height, line_heights
 
+# ==============================================================================
+# 🧩 FUNCIONES COMPLEMENTARIAS DE PARSEO Y NORMALIZACIÓN DE BASE DE DATOS
+# ==============================================================================
+
+def format_phrases(text, prefix="H"):
+    """Formatea frases H y P garantizando un salto de línea por cada código H o P."""
+    if not text or not str(text).strip() or any(w in str(text).lower() for w in ["sin ", "ningun", "ningún", "n/a", "none"]):
+        return text.strip() if (text and str(text).strip() and "sin " in str(text).lower()) else ("Sin indicaciones de peligro." if prefix == "H" else "Sin consejos de prudencia.")
+    
+    cleaned = str(text).strip()
+    formatted = re.sub(r'(\.|\;)?\s*([HP]\d{3}\b|[HP]\d{3}\s*\+\s*[HP]\d{3})', r'\n\2', cleaned)
+    lines = [line.strip() for line in formatted.split('\n') if line.strip()]
+    return '\n'.join(lines)
+
+def parse_sga_pictograms(sga_raw, sga_files):
+    """Mapea pictogramas SGA (GHS) desde la base de datos a los archivos disponibles en assets/sga."""
+    if not sga_raw or not str(sga_raw).strip() or any(w in str(sga_raw).lower() for w in ["ningun", "ningún", "n/a", "sin"]):
+        return []
+    
+    found = []
+    sga_upper = str(sga_raw).upper()
+    
+    for i in range(1, 10):
+        code = f"GHS0{i}"
+        short_code = f"GHS{i}"
+        if code in sga_upper or short_code in sga_upper or f"0{i}" in sga_upper:
+            fname = f"{code}.png"
+            if fname in sga_files and fname not in found:
+                found.append(fname)
+                
+    if not found:
+        for f in sga_files:
+            base_f = os.path.splitext(f)[0].upper()
+            if base_f in sga_upper and f not in found:
+                found.append(f)
+                
+    return found
+
+def parse_un_class(un_raw, un_files):
+    """Mapea la Clase UN de transporte a los archivos en assets/un."""
+    if not un_raw or not str(un_raw).strip() or any(w in str(un_raw).lower() for w in ["n/a", "ningun", "ningún", "sin", "none", "-"]):
+        return ""
+    
+    un_clean = str(un_raw).upper().strip()
+    if un_clean in un_files:
+        return un_clean
+    if f"{un_clean}.png" in un_files:
+        return f"{un_clean}.png"
+    if f"CLASE_{un_clean}.png" in un_files:
+        return f"CLASE_{un_clean}.png"
+    
+    match = re.search(r'(\d+(\.\d+)?)', un_clean)
+    if match:
+        num_str = match.group(1)
+        candidate = f"CLASE_{num_str}.png"
+        if candidate in un_files:
+            return candidate
+            
+    return ""
+
+def parse_un_code(un_code_raw):
+    """Formatea la Identificación UN a formato estándar 'UN XXXX'."""
+    if not un_code_raw or not str(un_code_raw).strip() or any(w in str(un_code_raw).lower() for w in ["n/a", "ningun", "ningún", "sin", "none", "-"]):
+        return "N/A"
+    clean = str(un_code_raw).strip()
+    if clean.isdigit():
+        return f"UN{clean}"
+    return clean
+
+def parse_epp_pictograms(epp_raw, epp_files):
+    """Mapea los nombres de EPP desde el CSV a las imágenes circulares en assets/epp."""
+    if not epp_raw or not str(epp_raw).strip() or any(w in str(epp_raw).lower() for w in ["ningun", "ningún", "n/a", "sin"]):
+        return []
+        
+    epp_lower = str(epp_raw).lower()
+    found = []
+    
+    mappings = [
+        (["gafas", "lentes", "ojos", "anteparaparos"], "GAFAS.png"),
+        (["guantes", "manos"], "GUANTES.png"),
+        (["prenda", "ropa", "overol", "traje", "bata"], "PRENDA.png"),
+        (["mascarilla gas", "gas", "respirador gas"], "MASCARILLA GAS.png"),
+        (["mascarilla", "tapabocas", "respirador"], "MASCARILLA.png"),
+        (["careta", "visor", "facial"], "CARETA.png"),
+        (["botas", "calzado", "zapatos"], "BOTAS.png"),
+    ]
+    
+    for keywords, fname in mappings:
+        if fname in epp_files and fname not in found:
+            for kw in keywords:
+                if kw in epp_lower:
+                    found.append(fname)
+                    break
+                    
+    for ef in epp_files:
+        base_name = os.path.splitext(ef)[0].lower()
+        if base_name in epp_lower and ef not in found:
+            found.append(ef)
+            
+    return found
+
+def parse_chemical_db(content_str, sga_files, epp_files, un_files):
+    """
+    Parsea de forma ultra-robusta la base de datos de reactivos (CSV/TSV/delimitado por punto y coma ; o tabuladores).
+    Soporta estructuras multicolumna o con separador personalizado.
+    """
+    if not content_str or not content_str.strip():
+        return []
+
+    lines = [line.strip() for line in content_str.replace('\r\n', '\n').replace('\r', '\n').split('\n') if line.strip()]
+    if not lines:
+        return []
+
+    header_line = lines[0]
+    
+    delimiters = [';', '\t', ',', '|']
+    delimiter = ';'
+    max_cnt = 0
+    for d in delimiters:
+        cnt = header_line.count(d)
+        if cnt > max_cnt:
+            max_cnt = cnt
+            delimiter = d
+
+    reader = csv.reader(lines, delimiter=delimiter)
+    all_rows = list(reader)
+    if not all_rows:
+        return []
+
+    headers = [h.strip() for h in all_rows[0]]
+    data_rows = all_rows[1:]
+
+    def norm_key(k):
+        return k.lower().replace(" ", "").replace("_", "").replace("-", "").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+
+    hdr_map = {}
+    for idx, h in enumerate(headers):
+        nk = norm_key(h)
+        if any(w in nk for w in ["nombre", "sustancia", "reactivo", "producto"]):
+            hdr_map["nombre"] = idx
+        elif any(w in nk for w in ["comp", "formula"]):
+            hdr_map["composicion"] = idx
+        elif any(w in nk for w in ["palabra", "advertencia"]):
+            hdr_map["palabra"] = idx
+        elif "sga" in nk or "ghs" in nk:
+            hdr_map["sga"] = idx
+        elif "fraseh" in nk or "indicacion" in nk or ("peligro" in nk and "frase" in nk):
+            hdr_map["frase_h"] = idx
+        elif "frasep" in nk or "consejo" in nk or "prudencia" in nk:
+            hdr_map["frase_p"] = idx
+        elif "claseun" in nk or "clase" in nk:
+            hdr_map["clase_un"] = idx
+        elif "codigoun" in nk or "identificacionun" in nk or nk == "un":
+            hdr_map["codigo_un"] = idx
+        elif "epp" in nk or "proteccion" in nk:
+            hdr_map["epp"] = idx
+        elif "proveedor" in nk or "fabricante" in nk:
+            hdr_map["proveedor"] = idx
+
+    parsed_results = []
+
+    for row_idx, row in enumerate(data_rows):
+        if not row or not any(field.strip() for field in row):
+            continue
+
+        num_cols = len(row)
+
+        def get_val(key, default_pos):
+            if key in hdr_map and hdr_map[key] < num_cols:
+                return row[hdr_map[key]].strip()
+            elif default_pos is not None and abs(default_pos) < num_cols:
+                return row[default_pos].strip()
+            return ""
+
+        if num_cols >= 10 and ("nombre" not in hdr_map or "proveedor" not in hdr_map):
+            p_name = row[0].strip()
+            prov_text = row[-1].strip()
+            epp_raw = row[-2].strip()
+            un_code_raw = row[-3].strip()
+            un_class_raw = row[-4].strip()
+            p_raw = row[-5].strip()
+            h_raw = row[-6].strip()
+            sga_raw = row[-7].strip()
+            signal_raw = row[-8].strip()
+            comp_parts = [c.strip() for c in row[1:-8] if c.strip()]
+            c_text = " ".join(comp_parts).replace("|", "\n")
+        else:
+            p_name = get_val("nombre", 0)
+            c_text = get_val("composicion", 1).replace("|", "\n")
+            signal_raw = get_val("palabra", 2)
+            sga_raw = get_val("sga", 3)
+            h_raw = get_val("frase_h", 4)
+            p_raw = get_val("frase_p", 5)
+            un_class_raw = get_val("clase_un", 6)
+            un_code_raw = get_val("codigo_un", 7)
+            epp_raw = get_val("epp", 8)
+            prov_text = get_val("proveedor", 9)
+
+        if not p_name or p_name.upper() in ["NOMBRE", "SUSTANCIA", "REACTIVO"]:
+            continue
+
+        s_word = "Atención"
+        sig_lower = signal_raw.lower()
+        if "peligro" in sig_lower:
+            s_word = "Peligro"
+        elif "atencion" in sig_lower or "atención" in sig_lower:
+            s_word = "Atención"
+        elif any(w in sig_lower for w in ["ningun", "ningún", "n/a", "sin"]):
+            s_word = "Ninguna"
+
+        sga_list = parse_sga_pictograms(sga_raw, sga_files)
+        h_text = format_phrases(h_raw, "H")
+        p_text = format_phrases(p_raw, "P")
+        un_file = parse_un_class(un_class_raw, un_files)
+        un_num = parse_un_code(un_code_raw)
+        epp_list = parse_epp_pictograms(epp_raw, epp_files)
+
+        if not prov_text or prov_text.upper() in ["N/A", "NINGUNO", "NONE", ""]:
+            prov_text = "Sin información del proveedor"
+
+        parsed_results.append({
+            "product_name": p_name,
+            "composition": c_text if c_text else "Sin composición especificada",
+            "signal_word": s_word,
+            "sga_list": sga_list,
+            "h_phrases": h_text,
+            "p_phrases": p_text,
+            "un_file": un_file,
+            "un_code": un_num,
+            "epp_list": epp_list,
+            "provider": prov_text,
+            "sga_raw": sga_raw,
+            "epp_raw": epp_raw
+        })
+
+    return parsed_results
+
 def generate_chemical_label_custom(
     p_name, c_text, s_word, sga_list, h_text, p_text, un_file, un_num, epp_list, prov_text, scale=1.2
 ):
@@ -266,9 +504,9 @@ def generate_chemical_label_custom(
     font_small        = load_font(15 * scale, is_bold=False) # Texto de Composición
     font_provider     = load_font(15 * scale, is_bold=False) # Datos del Proveedor
     
-    col_left_w = 290
+    col_left_w = 300
     col_right_w = WIDTH - col_left_w
-
+    
     # Ancho máximo seguro para que el texto nunca toque las líneas verticales
     comp_max_w = col_left_w - (PADDING_INNER * 2)
     right_col_max_w = col_right_w - (PADDING_INNER * 2)
@@ -344,7 +582,7 @@ def generate_chemical_label_custom(
         center_x = col_left_w + (mid_col_w - pw) // 2
         draw.text((center_x, py_prod), pline, fill="black", font=font_prod_name)
         py_prod += font_prod_name.size + 4
-
+    
     comp_x_start = WIDTH - col_left_w
     draw.rectangle([comp_x_start, y_curr, WIDTH - 1, y_curr + 30], fill="#F3F4F6", outline="black", width=LINE_THICKNESS)
     
@@ -363,13 +601,13 @@ def generate_chemical_label_custom(
         cy += font_small.size + 4
         
     y_curr += row1_h
-
+    
     # FILA 2
     draw.line([(0, y_curr + row2_h), (WIDTH, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
     draw.line([(col_left_w, y_curr), (col_left_w, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
-    p_adv_bbox = draw.textbbox((0, 0), "PALABRA DE ADVERTENCIA", font=font_body_bold)
+    p_adv_bbox = draw.textbbox((0, 0), "Palabra de Advertencia", font=font_body_bold)
     p_adv_h = p_adv_bbox[3] - p_adv_bbox[1]
-    draw.text((PADDING_INNER, y_curr + (row2_h - p_adv_h) // 2), "PALABRA DE ADVERTENCIA", fill="black", font=font_body_bold)
+    draw.text((PADDING_INNER, y_curr + (row2_h - p_adv_h) // 2), "Palabra de Advertencia", fill="black", font=font_body_bold)
     
     sig_color = "#DC2626" if s_word == "Peligro" else "#D97706"
     sig_bbox = draw.textbbox((0, 0), s_word.upper(), font=font_signal)
@@ -503,6 +741,7 @@ def generate_chemical_label_custom(
             except Exception:
                 pass
                 
+    # Dibujar la identificación UN ajustada dentro del recuadro
     un_id_y = y_curr + row5_h - un_id_h - 10
     for uline in un_id_lines:
         ubbox = draw.textbbox((0, 0), uline, font=font_body_bold)
@@ -562,7 +801,7 @@ def generate_chemical_label_custom(
         lx = max(w_col1 + w_col2 + 10, w_col1 + w_col2 + (w_col3 - lw) // 2)
         draw.text((lx, p_y), line, fill="#111827", font=font_provider)
         p_y += font_provider.size + 4
-        
+
     return img
 
 # ==============================================================================
@@ -597,76 +836,131 @@ if mode == "Etiqueta Individual":
     )
 
 else:
-    st.title("📊 Generación por Lote / Tabla (CSV)")
-    st.markdown("Adjunta un archivo CSV para generar las etiquetas de múltiples reactivos a la vez en un solo paquete ZIP.")
+    st.title("📊 Generación por Lote / Base de Datos (CSV / Semicolon)")
+    st.markdown("Carga tu archivo de base de datos (delimitado por `;`, `,` o tabulaciones) para procesar múltiples sustancias y generar todas sus etiquetas en formato PNG o en un único paquete ZIP.")
 
-    sample_csv_data = (
-        "Nombre,Composicion,Palabra Advertencia,Pictogramas SGA,Frases H,Frases P,Clase UN,Codigo UN,Pictogramas EPP,Proveedor\n"
-        "VARSOL,\"Mezcla de hidrocarburos C9-C12, 79%\",Atención,\"GHS02.png, GHS07.png\",\"H226 Líquidos inflamables\nH302 Nocivo\",\"P102 Mantener fuera del alcance\nP210 Alejado del calor\",CLASE_3.png,1268,\"BOTAS.png, GAFAS.png, GUANTES.png, MASCARILLA.png\",\"CONSTELACIÓN INDUSTRIAL S.A.S\"\n"
-        "ACETONA PURA,\"Propan-2-ona >99.5%\",Peligro,\"GHS02.png, GHS07.png\",\"H225 Líquido muy inflamable\nH319 Irritación ocular\",\"P210 Alejado de chispas\nP233 Recipiente cerrado\",CLASE_3.png,1090,\"GAFAS.png, GUANTES.png, MASCARILLA GAS.png\",\"QUÍMICOS BOGOTÁ S.A.S\"\n"
+    sample_db_49 = (
+        "Nombre;Composicion;Palabra_Advertencia;Pictogramas_SGA;Frases_H;Frases_P;Clase_UN;Codigo_UN;Pictogramas_EPP;Proveedor\n"
+        "3,4-DIHIDROXIFENIL-L-FENILALANINA;59-92-7 Levodopa <= 100 %;Atencion;GHS07;H302: Nocivo en caso de ingestión. H315: Provoca irritación cutánea. H319: Provoca irritación ocular grave. H335: Puede irritar las vías respiratorias.;P261: Evitar respirar el polvo. P264: Lavarse la piel concienzudamente. P280: Llevar guantes de protección.;N/A;N/A;gafas, guantes, prenda, mascarilla;Sigma-Aldrich Inc. 3050 SPRUCE ST ST. LOUIS MO 63103\n"
+        "ACEITE DE INMERSION;120-51-4 Benzoato de bencilo >= 30 - < 50 %;Atencion;GHS09;H410: Muy tóxico para los organismos acuáticos, con efectos nocivos duraderos.;P273: Evitar su liberación al medio ambiente. P391: Recoger el vertido.;9;UN3082;gafas, guantes, prenda;MERCK S.A. Av.Carrera 9a No. 101-67 Bogotá\n"
+        "ACEITE DE PINO;8021-29-2 Fir needle oil <= 100 %;Atencion;GHS02, GHS07;H226: Líquidos y vapores inflamables. H315: Provoca irritación cutánea.;P210: Mantener alejado del calor, chispas, llamas abiertas.;3;UN1993;gafas, guantes, prenda, mascarilla;Sigma-Aldrich Inc. 3050 SPRUCE ST ST. LOUIS MO 63103\n"
+        "ÁCIDO 2-TIOBARBITÚRICO;5217-47-0 1,3-Diethyldihydro-2-thioxopyrimidine-4,6(1H,5H)-dione <= 100 %;Peligro;GHS06, GHS08;H301: Tóxico en caso de ingestión. H317: Puede provocar una reacción alérgica en la piel.;P280: Llevar guantes de protección. P301 + P310: Llamar a toxicología.;6.1;UN2811;gafas, guantes, prenda, mascarilla;Sigma-Aldrich Inc. 3050 SPRUCE ST ST. LOUIS MO 63103\n"
     )
 
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
         st.download_button(
-            label="📥 Descargar Plantilla CSV de Ejemplo",
-            data=sample_csv_data,
-            file_name="Plantilla_Reactivos_SGA.csv",
+            label="📥 Descargar Plantilla / Modelo de Base de Datos (;)",
+            data=sample_db_49,
+            file_name="Modelo_Base_Datos_Sustancias.csv",
             mime="text/csv",
             use_container_width=True
         )
 
-    uploaded_file = st.file_uploader("Adjunta tu archivo CSV con la tabla de reactivos", type=["csv", "txt"])
+    uploaded_file = st.file_uploader("Adjunta tu archivo CSV o TXT con la base de datos de reactivos", type=["csv", "txt"])
 
     if uploaded_file is not None:
         try:
-            content = uploaded_file.getvalue().decode("utf-8")
-            reader = csv.DictReader(StringIO(content))
-            rows = list(reader)
+            raw_bytes = uploaded_file.getvalue()
+            try:
+                content = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                content = raw_bytes.decode("latin-1")
 
-            st.success(f"Se cargaron exitosamente {len(rows)} reactivos del archivo CSV.")
-            
-            if st.button("🚀 Generar Todas las Etiquetas y Descargar ZIP", type="primary", use_container_width=True):
-                zip_buf = BytesIO()
-                with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                    for idx, r in enumerate(rows):
-                        p_name = r.get("Nombre", f"REACTIVO_{idx+1}")
-                        c_text = r.get("Composicion", "Sin composición")
-                        s_word = "Peligro" if "peligro" in r.get("Palabra Advertencia", "").lower() else "Atención"
-                        
-                        sga_raw = r.get("Pictogramas SGA", "GHS02.png")
-                        sga_list = [s.strip() for s in sga_raw.split(",") if s.strip() in sga_files]
-                        if not sga_list:
-                            sga_list = [sga_files[0]] if sga_files else []
+            parsed_items = parse_chemical_db(content, sga_files, epp_files, un_files)
 
-                        h_text = r.get("Frases H", "")
-                        p_text = r.get("Frases P", "")
-                        
-                        un_raw = r.get("Clase UN", "CLASE_3.png").strip()
-                        un_file = un_raw if un_raw in un_files else (un_files[0] if un_files else "")
-                        un_num = r.get("Codigo UN", "1268")
+            if not parsed_items:
+                st.error("No se pudieron extraer reactivos válidos del archivo. Verifica que las columnas contengan datos y no estén vacías.")
+            else:
+                st.success(f"✅ ¡Base de datos cargada con éxito! Se procesaron {len(parsed_items)} sustancias/reactivos.")
 
-                        epp_raw = r.get("Pictogramas EPP", "")
-                        epp_list = [e.strip() for e in epp_raw.split(",") if e.strip() in epp_files] if epp_raw else epp_files
+                df_summary = [
+                    {
+                        "Substancia / Nombre": item["product_name"],
+                        "Palabra Advertencia": item["signal_word"],
+                        "SGA Encontrados": ", ".join(item["sga_list"]) if item["sga_list"] else "Ninguno",
+                        "Clase UN": item["un_file"].replace(".png", "") if item["un_file"] else "N/A",
+                        "Código UN": item["un_code"],
+                        "EPP Recomendados": ", ".join([e.replace(".png", "") for e in item["epp_list"]]) if item["epp_list"] else "Ninguno",
+                        "Proveedor": item["provider"]
+                    }
+                    for item in parsed_items
+                ]
+                
+                with st.expander("📋 Ver Tabla Completa de Sustancias Detectadas", expanded=True):
+                    st.dataframe(df_summary, use_container_width=True)
 
-                        prov_text = r.get("Proveedor", "CONSTELACIÓN INDUSTRIAL S.A.S")
-
-                        img = generate_chemical_label_custom(
-                            p_name, c_text, s_word, sga_list, h_text, p_text, un_file, un_num, epp_list, prov_text,
-                            scale=1.1
-                        )
-                        
-                        img_byte_arr = BytesIO()
-                        img.save(img_byte_arr, format="PNG")
-                        clean_item_name = p_name.replace(" ", "_")
-                        zip_file.writestr(f"{idx+1}_Etiqueta_{clean_item_name}.png", img_byte_arr.getvalue())
-
-                st.download_button(
-                    label="📦 DESCARGAR PAQUETE ZIP (Todas las Etiquetas PNG)",
-                    data=zip_buf.getvalue(),
-                    file_name="Etiquetas_SGA_Colmena_Lote.zip",
-                    mime="application/zip",
-                    use_container_width=True
+                st.divider()
+                st.subheader("👁️ Vista Previa Individual e Inspección de Etiquetas")
+                
+                selected_idx = st.selectbox(
+                    "Selecciona una sustancia de la base de datos para previsualizar su etiqueta:",
+                    options=list(range(len(parsed_items))),
+                    format_func=lambda i: f"{i+1}. {parsed_items[i]['product_name']} ({parsed_items[i]['signal_word']})"
                 )
+
+                if selected_idx is not None:
+                    item_preview = parsed_items[selected_idx]
+                    prev_img = generate_chemical_label_custom(
+                        item_preview["product_name"],
+                        item_preview["composition"],
+                        item_preview["signal_word"],
+                        item_preview["sga_list"],
+                        item_preview["h_phrases"],
+                        item_preview["p_phrases"],
+                        item_preview["un_file"],
+                        item_preview["un_code"],
+                        item_preview["epp_list"],
+                        item_preview["provider"],
+                        scale=font_scale
+                    )
+                    
+                    st.image(prev_img, caption=f"Etiqueta Generada para: {item_preview['product_name']}", use_container_width=True)
+
+                    buf_single = BytesIO()
+                    prev_img.save(buf_single, format="PNG")
+                    st.download_button(
+                        label=f"📥 Descargar solo la etiqueta de {item_preview['product_name']} (PNG)",
+                        data=buf_single.getvalue(),
+                        file_name=f"Etiqueta_{item_preview['product_name'].replace(' ', '_')}.png",
+                        mime="image/png"
+                    )
+
+                st.divider()
+                st.subheader("📦 Descargar Todas las Etiquetas en un Archivo ZIP")
+                
+                if st.button("🚀 Generar y Empaquetar Todas las Etiquetas en ZIP", type="primary", use_container_width=True):
+                    with st.spinner(f"Generando {len(parsed_items)} etiquetas en alta resolución..."):
+                        zip_buf = BytesIO()
+                        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                            for idx, item in enumerate(parsed_items):
+                                img = generate_chemical_label_custom(
+                                    item["product_name"],
+                                    item["composition"],
+                                    item["signal_word"],
+                                    item["sga_list"],
+                                    item["h_phrases"],
+                                    item["p_phrases"],
+                                    item["un_file"],
+                                    item["un_code"],
+                                    item["epp_list"],
+                                    item["provider"],
+                                    scale=1.1
+                                )
+                                
+                                img_byte_arr = BytesIO()
+                                img.save(img_byte_arr, format="PNG")
+                                safe_name = "".join(c if c.isalnum() else "_" for c in item["product_name"])
+                                zip_file.writestr(f"{idx+1:02d}_Etiqueta_{safe_name}.png", img_byte_arr.getvalue())
+
+                        st.success("🎉 ¡Todas las etiquetas han sido generadas y empaquetadas exitosamente!")
+                        st.download_button(
+                            label=f"📦 DESCARGAR PAQUETE ZIP ({len(parsed_items)} ETIQUETAS PNG)",
+                            data=zip_buf.getvalue(),
+                            file_name="Etiquetas_SGA_Colmena_Lote_Completo.zip",
+                            mime="application/zip",
+                            use_container_width=True,
+                            type="primary"
+                        )
         except Exception as e:
-            st.error(f"Error al leer el archivo CSV: {str(e)}")
+            st.error(f"Error al procesar la base de datos: {str(e)}")
