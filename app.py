@@ -555,9 +555,9 @@ def generate_chemical_label_custom(
     # ==============================================================================
     font_header_title = load_font(22 * scale, is_bold=True)  # Título "COLMENA SEGUROS"
     font_signal       = load_font(30 * scale, is_bold=True)  # Palabra "ATENCIÓN" o "PELIGRO"
-    font_body         = load_font(19 * scale, is_bold=False) # Frases H y Frases P
+    font_body         = load_font(19 * scale, is_bold=True) # Frases H y Frases P
     font_body_bold    = load_font(17 * scale, is_bold=True)  # Encabezados de sección
-    font_small        = load_font(15 * scale, is_bold=False) # Texto de Composición
+    font_small        = load_font(15 * scale, is_bold=True) # Texto de Composición
     font_provider     = load_font(15 * scale, is_bold=False) # Datos del Proveedor
     
     col_left_w = 300
@@ -676,7 +676,7 @@ def generate_chemical_label_custom(
     p_adv_h = p_adv_bbox[3] - p_adv_bbox[1]
     draw.text((PADDING_INNER, y_curr + (row2_h - p_adv_h) // 2), "Palabra de Advertencia", fill="black", font=font_body_bold)
     
-    sig_color = "#DC2626" if s_word == "Peligro" else "#D97706"
+    sig_color = "black"  # Color negro para impresión legibles
     sig_bbox = draw.textbbox((0, 0), s_word.upper(), font=font_signal)
     sw = sig_bbox[2] - sig_bbox[0]
     sx = max(col_left_w + PADDING_INNER, col_left_w + (col_right_w - sw) // 2)
