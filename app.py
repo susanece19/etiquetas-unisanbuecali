@@ -108,7 +108,7 @@ if mode == "Etiqueta Individual":
     # 3. Palabra de Advertencia
     signal_word = st.sidebar.selectbox(
         "3. Palabra de Advertencia",
-        options=["Atención", "Peligro"],
+        options=["Atención", "Peligro", "Ninguna"],
         index=0
     )
 
