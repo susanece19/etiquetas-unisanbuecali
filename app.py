@@ -713,7 +713,7 @@ def generate_chemical_label_custom(
     draw.line([(col_left_w, y_curr), (col_left_w, y_curr + row2_h)], fill="black", width=LINE_THICKNESS)
     p_adv_bbox = draw.textbbox((0, 0), "Palabra de Advertencia", font=font_body_bold)
     p_adv_h = p_adv_bbox[3] - p_adv_bbox[1]
-    draw.text((PADDING_INNER, y_curr + (row2_h - p_adv_h) // 2), "Palabra de Advertencia", fill="black", font=font_body_bold)
+    draw.text((PADDING_INNER, y_curr + (row2_h - p_adv_h) // 2), "PALABRA DE ADVERTENCIA", fill="black", font=font_body_bold)
     
     sig_color = "black"  # Color negro para impresión legibles
     sig_bbox = draw.textbbox((0, 0), s_word.upper(), font=font_signal)
