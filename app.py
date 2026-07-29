@@ -606,8 +606,17 @@ def generate_chemical_label_custom(
     comp_max_w = col_left_w - (PADDING_INNER * 2)
     right_col_max_w = col_right_w - (PADDING_INNER * 2)
     mid_col_w = WIDTH - 2 * col_left_w  # Ancho de la celda central del Nombre del Producto
+
+    # Ajuste dinámico de tamaño de fuente para la Composición (si es poco texto se ve más grande, en negro puro)
+    font_size_comp = int(22 * scale)
+    min_font_size_comp = int(14 * scale)
+    font_comp = load_font(font_size_comp, is_bold=True)
+    comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
     
-    comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_small, comp_max_w)
+    while font_size_comp > min_font_size_comp and (len(comp_lines) > 3 or comp_h > 100):
+        font_size_comp -= 1
+        font_comp = load_font(font_size_comp, is_bold=True)
+        comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
     
     # Ajuste dinámico de tamaño de fuente para el Nombre del Producto
     max_prod_w = mid_col_w - (PADDING_INNER * 2)
@@ -642,12 +651,23 @@ def generate_chemical_label_custom(
     
     provider_lines, prov_h, _ = wrap_and_measure_text(draw, prov_text, font_provider, w_col3 - (PADDING_INNER * 2))
     
-    # Cálculo de espacio para EPP (filas dinámicas)
-    epp_icon_size = 46
+  # Cálculo de espacio para EPP (filas y tamaño dinámicos)
     epp_gap_x = 10
     epp_gap_y = 10
-    cols_epp = max(1, (w_col2 - 20) // (epp_icon_size + epp_gap_x))
-    rows_epp = math.ceil(len(epp_list) / cols_epp) if epp_list else 1
+    num_epp = len(epp_list) if epp_list else 0
+    
+    if 0 < num_epp <= 5:
+        # Si caben en una sola fila (1 a 5 pictogramas), aumentamos el tamaño hasta 65px
+        cols_epp = num_epp
+        rows_epp = 1
+        max_w_per_epp = ((w_col2 - 20) - (num_epp - 1) * epp_gap_x) // num_epp
+        epp_icon_size = min(max_w_per_epp, 65)
+    else:
+        # Si son más de 5, se distribuyen en cuadrícula con el tamaño base de 46px
+        epp_icon_size = 46
+        cols_epp = max(1, (w_col2 - 20) // (epp_icon_size + epp_gap_x))
+        rows_epp = math.ceil(num_epp / cols_epp) if num_epp > 0 else 1
+    
     epp_req_h = 36 + rows_epp * epp_icon_size + (rows_epp - 1) * epp_gap_y + 15
     
     un_id_lines, un_id_h, _ = wrap_and_measure_text(draw, f"Identificación UN: {un_num}", font_body_bold, w_col1 - (PADDING_INNER * 2))
@@ -703,7 +723,7 @@ def generate_chemical_label_custom(
         line_bbox = draw.textbbox((0, 0), line, font=font_small)
         lw = line_bbox[2] - line_bbox[0]
         lx = max(comp_x_start + PADDING_INNER, comp_x_start + (col_left_w - lw) // 2)
-        draw.text((lx, cy), line, fill="#1F2937", font=font_small)
+        draw.text((lx, cy), line, fill="black", font=font_small)
         cy += font_small.size + 4
         
     y_curr += row1_h
@@ -862,11 +882,12 @@ def generate_chemical_label_custom(
     epp_hdr_w = epp_hdr_bbox[2] - epp_hdr_bbox[0]
     epp_hdr_x = w_col1 + (w_col2 - epp_hdr_w) // 2
     draw.text((epp_hdr_x, y_curr + 5), "EPP (ELEMENTOS PROTECCIÓN PERSONAL A USAR)", fill="black", font=font_hdr_epp)
-    
+
     if epp_list:
         epp_box_x_start = w_col1
-        epp_box_y_start = y_curr + 32
-        
+        epp_total_grid_h = rows_epp * epp_icon_size + (rows_epp - 1) * epp_gap_y
+        epp_box_y_start = y_curr + 26 + max(4, (row5_h - 26 - epp_total_grid_h) // 2)
+ 
         for idx, epp_file in enumerate(epp_list):
             r = idx // cols_epp
             c = idx % cols_epp
