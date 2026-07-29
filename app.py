@@ -616,11 +616,17 @@ def generate_chemical_label_custom(
     comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
     
     # Reducción reactiva basada en número de líneas (> 2 líneas) o altura (> 55px * escala)
-    target_max_h = 55 * scale
-    while font_size_comp > min_font_size_comp and (len(comp_lines) > 2 or comp_h > target_max_h):
+    target_comp_h = 75 * scale
+    while font_size_comp > min_font_size_comp and comp_h > target_comp_h:
         font_size_comp -= 1
         font_comp = load_font(font_size_comp, is_bold=True)
         comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
+    
+    # target_max_h = 55 * scale
+    # while font_size_comp > min_font_size_comp and (len(comp_lines) > 2 or comp_h > target_max_h):
+        # font_size_comp -= 1
+        # font_comp = load_font(font_size_comp, is_bold=True)
+        # comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
     
     # Ajuste dinámico de tamaño de fuente para el Nombre del Producto
     max_prod_w = mid_col_w - (PADDING_INNER * 2)
