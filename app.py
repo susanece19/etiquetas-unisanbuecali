@@ -608,7 +608,7 @@ def generate_chemical_label_custom(
     mid_col_w = WIDTH - 2 * col_left_w  # Ancho de la celda central del Nombre del Producto
 
     # Ajuste dinámico de tamaño de fuente para la Composición (si es poco texto se ve más grande, en negro puro)
-    font_size_comp = int(22 * scale)
+    font_size_comp = int(28 * scale)
     min_font_size_comp = int(14 * scale)
     font_comp = load_font(font_size_comp, is_bold=True)
     comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
