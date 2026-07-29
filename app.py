@@ -608,18 +608,32 @@ def generate_chemical_label_custom(
     mid_col_w = WIDTH - 2 * col_left_w  # Ancho de la celda central del Nombre del Producto
 
     # Ajuste dinámico de tamaño de fuente para la Composición (si es poco texto se ve más grande, en negro puro)
-    font_size_comp = int(35 * scale) # <--- TAMAÑO MÁXIMO DE LETRA PARA COMPOSICIÓN CORTA
-    min_font_size_comp = int(14 * scale) # <--- TAMAÑO MÍNIMO AL QUE PUEDE BAJAR SI ES MUY EXTENSO
+    # - Texto corto (1 línea): fuente grande (hasta 28pt * escala)
+    # - Texto mediano/extenso (2+ líneas): se reduce dinámicamente hasta 13pt * escala
+    font_size_comp = int(28 * scale)      # <--- TAMAÑO MÁXIMO DE LETRA PARA COMPOSICIÓN CORTA (28pt)
+    min_font_size_comp = int(13 * scale)  # <--- TAMAÑO MÍNIMO AL QUE PUEDE BAJAR SI ES MUY EXTENSO (13pt)
     font_comp = load_font(font_size_comp, is_bold=True)
     comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
-
-    # Reducción suave basada en la altura acumulada del texto en el recuadro
-    target_max_h = 80 * scale
     
-    while font_size_comp > min_font_size_comp and comp_h > target_max_h:
+    # Reducción reactiva basada en número de líneas (> 2 líneas) o altura (> 55px * escala)
+    target_max_h = 55 * scale
+    while font_size_comp > min_font_size_comp and (len(comp_lines) > 2 or comp_h > target_max_h):
         font_size_comp -= 1
         font_comp = load_font(font_size_comp, is_bold=True)
         comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
+    
+    # font_size_comp = int(35 * scale) # <--- TAMAÑO MÁXIMO DE LETRA PARA COMPOSICIÓN CORTA
+    # min_font_size_comp = int(14 * scale) # <--- TAMAÑO MÍNIMO AL QUE PUEDE BAJAR SI ES MUY EXTENSO
+    # font_comp = load_font(font_size_comp, is_bold=True)
+    # comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
+
+    # Reducción suave basada en la altura acumulada del texto en el recuadro
+    # target_max_h = 80 * scale
+    
+    # while font_size_comp > min_font_size_comp and comp_h > target_max_h:
+        # font_size_comp -= 1
+        # font_comp = load_font(font_size_comp, is_bold=True)
+        # comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
     
     # Ajuste dinámico de tamaño de fuente para el Nombre del Producto
     max_prod_w = mid_col_w - (PADDING_INNER * 2)
