@@ -610,7 +610,7 @@ def generate_chemical_label_custom(
     # Ajuste dinámico de tamaño de fuente para la Composición Química:
     # - Texto corto (1-2 líneas): Se muestra en letra GRANDE (hasta 28pt * escala)
     # - Texto mediano/extenso: Se reduce paulatinamente (hasta mín. 14pt * escala)
-    font_size_comp = int(28 * scale)      # <--- TAMAÑO MÁXIMO INICIAL PARA TEXTO CORTO (28pt)
+    font_size_comp = int(26 * scale)      # <--- TAMAÑO MÁXIMO INICIAL PARA TEXTO CORTO (26pt)
     min_font_size_comp = int(14 * scale)  # <--- TAMAÑO MÍNIMO PARA TEXTOS LARGOS (14pt)
     font_comp = load_font(font_size_comp, is_bold=True)
     comp_lines, comp_h, _ = wrap_and_measure_text(draw, c_text, font_comp, comp_max_w)
