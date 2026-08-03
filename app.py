@@ -166,9 +166,9 @@ st.sidebar.markdown(
     """
     <div style="text-align: center; color: #4B5563; font-size: 0.85rem; padding: 10px; background-color: #F3F4F6; border-radius: 8px;">
         <b>💡 Aplicación Creada Por:</b><br>
-        <strong>[SUSAN ESMERALDA CABRERA ENRIQUEZ/ UNIVERSIDAD DE SAN BUENAVENTURA]</strong><br>
+        <strong>SUSAN ESMERALDA CABRERA ENRIQUEZ/ UNIVERSIDAD DE SAN BUENAVENTURA</strong><br>
         <span style="font-size: 0.75rem; color: #6B7280;">© 2026 Todos los derechos reservados</span><br>
-        <small>Contacto: tuemail@ejemplo.com</small>
+        <small>Contacto: susanece19@gmail.com o laboratorista.biologia@usbcali.edu.co</small>
     </div>
     """,
     unsafe_allow_html=True
