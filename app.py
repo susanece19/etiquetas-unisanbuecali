@@ -135,12 +135,14 @@ if mode == "Etiqueta Individual":
 
     # 7. Transporte UN
     col_un1, col_un2 = st.sidebar.columns([2, 1])
+    un_options = ["Ninguno"] + un_files if un_files else ["Ninguno"]
     with col_un1:
-        selected_un_file = st.selectbox(
+        selected_un_choice = st.selectbox(
             "7a. Clase Transporte UN",
-            options=un_files,
-            index=un_files.index("CLASE_3.png") if "CLASE_3.png" in un_files else 0 if un_files else None
+            options=un_options,
+            index=un_options.index("CLASE_3.png") if "CLASE_3.png" in un_options else 0
         )
+        selected_un_file = "" if selected_un_choice == "Ninguno" else selected_un_choice
     with col_un2:
         un_code = st.text_input("7b. Código UN", value="1268")
 
@@ -852,7 +854,7 @@ def generate_chemical_label_custom(
     un_hdr_x = (w_col1 - un_hdr_w) // 2
     draw.text((un_hdr_x, y_curr + 5), "PICTOGRAMAS NACIONES UNIDAS", fill="black", font=font_hdr_un)
     
-    if un_file:
+    if un_file and un_file != "Ninguno":
         un_path = os.path.join(UN_DIR, un_file)
         if os.path.exists(un_path):
             try:
